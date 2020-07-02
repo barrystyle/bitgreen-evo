@@ -132,7 +132,7 @@ void CDKGSession::Contribute(CDKGPendingMessages& pendingMessages)
         LogPrint(BCLog::LLMQDKG, "CDKGSession::%s: GenerateContributions failed\n", __func__);
         return;
     }
-    LogPrint(BCLog::BENCHMARKMARK, "CDKGSession::%s: generated contributions. time=%d\n", __func__, t1.count());
+    LogPrint(BCLog::BENCHMARK, "CDKGSession::%s: generated contributions. time=%d\n", __func__, t1.count());
 
     SendContributions(pendingMessages);
 }
@@ -173,7 +173,7 @@ void CDKGSession::SendContributions(CDKGPendingMessages& pendingMessages)
         }
     }
 
-    LogPrint(BCLog::BENCHMARKMARK, "CDKGSession::%s: encrypted contributions. time=%d\n", __func__, t1.count());
+    LogPrint(BCLog::BENCHMARK, "CDKGSession::%s: encrypted contributions. time=%d\n", __func__, t1.count());
 
     qc.sig = activeMasternodeInfo.blsKeyOperator->Sign(qc.GetSignHash());
 
@@ -282,7 +282,7 @@ void CDKGSession::ReceiveMessage(const uint256& hash, const CDKGContribution& qc
         }
     }
 
-    LogPrint(BCLog::BENCHMARKMARK, "CDKGSession::%s: received and relayed contribution. received=%d/%d, time=%d\n", __func__, receivedCount, members.size(), t1.count());
+    LogPrint(BCLog::BENCHMARK, "CDKGSession::%s: received and relayed contribution. received=%d/%d, time=%d\n", __func__, receivedCount, members.size(), t1.count());
 
     cxxtimer::Timer t2(true);
 
@@ -312,7 +312,7 @@ void CDKGSession::ReceiveMessage(const uint256& hash, const CDKGContribution& qc
         return;
     }
 
-    LogPrint(BCLog::BENCHMARKMARK, "CDKGSession::%s: decrypted our contribution share. time=%d\n", __func__, t2.count());
+    LogPrint(BCLog::BENCHMARK, "CDKGSession::%s: decrypted our contribution share. time=%d\n", __func__, t2.count());
 
     bool verifyPending = false;
     receivedSkContributions[member->idx] = skContribution;
@@ -377,7 +377,7 @@ void CDKGSession::VerifyPendingContributions()
         }
     }
 
-    LogPrint(BCLog::BENCHMARKMARK, "CDKGSession::%s: verified %d pending contributions. time=%d\n",
+    LogPrint(BCLog::BENCHMARK, "CDKGSession::%s: verified %d pending contributions. time=%d\n",
         __func__, pend.size(), t1.count());
 }
 
@@ -410,7 +410,7 @@ void CDKGSession::VerifyAndComplain(CDKGPendingMessages& pendingMessages)
         }
     }
 
-    LogPrint(BCLog::BENCHMARKMARK, "CDKGSession::%s: verified contributions. time=%d\n",
+    LogPrint(BCLog::BENCHMARK, "CDKGSession::%s: verified contributions. time=%d\n",
         __func__, t1.count());
 
     SendComplaint(pendingMessages);
@@ -442,7 +442,7 @@ void CDKGSession::SendComplaint(CDKGPendingMessages& pendingMessages)
         return;
     }
 
-    LogPrint(BCLog::BENCHMARKMARK, "CDKGSession::%s: sending complaint. badCount=%d, complaintCount=%d\n",
+    LogPrint(BCLog::BENCHMARK, "CDKGSession::%s: sending complaint. badCount=%d, complaintCount=%d\n",
         __func__, badCount, complaintCount);
 
     qc.sig = activeMasternodeInfo.blsKeyOperator->Sign(qc.GetSignHash());
@@ -813,7 +813,7 @@ void CDKGSession::ReceiveMessage(const uint256& hash, const CDKGJustification& q
         }
     }
 
-    LogPrint(BCLog::BENCHMARKMARK, "CDKGSession::%s: verified justification: received=%d/%d time=%d\n",
+    LogPrint(BCLog::BENCHMARK, "CDKGSession::%s: verified justification: received=%d/%d time=%d\n",
         __func__, receivedCount, expectedCount, t1.count());
 }
 
@@ -954,7 +954,7 @@ void CDKGSession::SendCommitment(CDKGPendingMessages& pendingMessages)
     t3.stop();
     timerTotal.stop();
 
-    LogPrint(BCLog::BENCHMARKMARK, "CDKGSession::%s: built premature commitment. time1=%d, time2=%d, time3=%d, totalTime=%d\n",
+    LogPrint(BCLog::BENCHMARK, "CDKGSession::%s: built premature commitment. time1=%d, time2=%d, time3=%d, totalTime=%d\n",
         __func__, t1.count(), t2.count(), t3.count(), timerTotal.count());
 
     quorumDKGDebugManager->UpdateLocalSessionStatus(params.type, [&](CDKGDebugSessionStatus& status) {
@@ -1107,7 +1107,7 @@ void CDKGSession::ReceiveMessage(const uint256& hash, const CDKGPrematureCommitm
 
     t1.stop();
 
-    LogPrint(BCLog::BENCHMARKMARK, "CDKGSession::%s: verified premature commitment. received=%d/%d, time=%d\n",
+    LogPrint(BCLog::BENCHMARK, "CDKGSession::%s: verified premature commitment. received=%d/%d, time=%d\n",
         __func__, receivedCount, members.size(), t1.count());
 }
 
@@ -1196,7 +1196,7 @@ std::vector<CFinalCommitment> CDKGSession::FinalizeCommitments()
 
         finalCommitments.emplace_back(fqc);
 
-        LogPrint(BCLog::BENCHMARKMARK, "CDKGSession::%s: final commitment: validMembers=%d, signers=%d, quorumPublicKey=%s, time1=%d, time2=%d\n",
+        LogPrint(BCLog::BENCHMARK, "CDKGSession::%s: final commitment: validMembers=%d, signers=%d, quorumPublicKey=%s, time1=%d, time2=%d\n",
             __func__, fqc.CountValidMembers(), fqc.CountSigners(), fqc.quorumPublicKey.ToString(),
             t1.count(), t2.count());
     }
