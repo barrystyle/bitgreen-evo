@@ -71,7 +71,7 @@
 // Application startup time (used for uptime calculation)
 const int64_t nStartupTime = GetTime();
 
-const char * const BITCOIN_CONF_FILENAME = "bitcoin.conf";
+const char * const BITGREEN_CONF_FILENAME = "bitgreen.conf";
 
 ArgsManager gArgs;
 
@@ -482,6 +482,9 @@ std::string ArgsManager::GetHelpMessage() const
             case OptionsCategory::REGISTER_COMMANDS:
                 usage += HelpMessageGroup("Register Commands:");
                 break;
+            case OptionsCategory::MASTERNODES:
+                usage += HelpMessageGroup("Masternode options:");
+                break;
             default:
                 break;
         }
@@ -536,7 +539,7 @@ static std::string FormatException(const std::exception* pex, const char* pszThr
     char pszModule[MAX_PATH] = "";
     GetModuleFileNameA(nullptr, pszModule, sizeof(pszModule));
 #else
-    const char* pszModule = "bitcoin";
+    const char* pszModule = "bitgreen";
 #endif
     if (pex)
         return strprintf(
@@ -561,7 +564,7 @@ fs::path GetDefaultDataDir()
     // Unix: ~/.bitcoin
 #ifdef WIN32
     // Windows
-    return GetSpecialFolderPath(CSIDL_APPDATA) / "Bitcoin";
+    return GetSpecialFolderPath(CSIDL_APPDATA) / "BitGreen";
 #else
     fs::path pathRet;
     char* pszHome = getenv("HOME");
@@ -571,10 +574,10 @@ fs::path GetDefaultDataDir()
         pathRet = fs::path(pszHome);
 #ifdef MAC_OSX
     // Mac
-    return pathRet / "Library/Application Support/Bitcoin";
+    return pathRet / "Library/Application Support/BitGreen";
 #else
     // Unix
-    return pathRet / ".bitcoin";
+    return pathRet / ".bitgreen";
 #endif
 #endif
 }
