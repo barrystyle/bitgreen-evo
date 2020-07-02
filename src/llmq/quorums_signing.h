@@ -67,7 +67,7 @@ class CRecoveredSigsDb
 private:
     CDBWrapper& db;
 
-    CCriticalSection cs;
+    RecursiveMutex  cs;
     unordered_lru_cache<std::pair<Consensus::LLMQType, uint256>, bool, StaticSaltedHasher, 30000> hasSigForIdCache;
     unordered_lru_cache<uint256, bool, StaticSaltedHasher, 30000> hasSigForSessionCache;
     unordered_lru_cache<uint256, bool, StaticSaltedHasher, 30000> hasSigForHashCache;
@@ -120,7 +120,7 @@ class CSigningManager
     static const int SIGN_HEIGHT_OFFSET = 8;
 
 private:
-    CCriticalSection cs;
+    RecursiveMutex  cs;
 
     CRecoveredSigsDb db;
 

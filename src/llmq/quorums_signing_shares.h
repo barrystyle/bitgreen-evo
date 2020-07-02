@@ -343,7 +343,7 @@ class CSigSharesManager : public CRecoveredSigsListener
     const size_t MAX_MSGS_TOTAL_BATCHED_SIGS = 400;
 
 private:
-    CCriticalSection cs;
+    RecursiveMutex  cs;
 
     std::thread workThread;
     CThreadInterrupt workInterrupt;
