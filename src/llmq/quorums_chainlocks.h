@@ -53,7 +53,7 @@ class CChainLocksHandler : public CRecoveredSigsListener
 
 private:
     CScheduler* scheduler;
-    CCriticalSection cs;
+    RecursiveMutex  cs;
     bool tryLockChainTipScheduled{false};
     bool isSporkActive{false};
     bool isEnforced{false};

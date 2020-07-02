@@ -630,7 +630,7 @@ class CDeterministicMNManager
     static const int LISTS_CACHE_SIZE = 576;
 
 public:
-    CCriticalSection cs;
+    RecursiveMutex  cs;
 
 private:
     CSpecialDB& specialDb;

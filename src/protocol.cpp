@@ -34,12 +34,36 @@ const char *NOTFOUND="notfound";
 const char *FILTERLOAD="filterload";
 const char *FILTERADD="filteradd";
 const char *FILTERCLEAR="filterclear";
+const char *REJECT="reject";
 const char *SENDHEADERS="sendheaders";
 const char *FEEFILTER="feefilter";
 const char *SENDCMPCT="sendcmpct";
 const char *CMPCTBLOCK="cmpctblock";
 const char *GETBLOCKTXN="getblocktxn";
 const char *BLOCKTXN="blocktxn";
+const char *SPORK="spork";
+const char *GETSPORKS="getsporks";
+const char *SYNCSTATUSCOUNT="ssc";
+const char *MNGOVERNANCESYNC="govsync";
+const char *MNGOVERNANCEOBJECT="govobj";
+const char *MNGOVERNANCEOBJECTVOTE="govobjvote";
+const char *GETMNLISTDIFF="getmnlistd";
+const char *MNLISTDIFF="mnlistdiff";
+const char *QSENDRECSIGS="qsendrecsigs";
+const char *QFCOMMITMENT="qfcommit";
+const char *QCONTRIB="qcontrib";
+const char *QCOMPLAINT="qcomplaint";
+const char *QJUSTIFICATION="qjustify";
+const char *QPCOMMITMENT="qpcommit";
+const char *QWATCH="qwatch";
+const char *QSIGSESANN="qsigsesann";
+const char *QSIGSHARESINV="qsigsinv";
+const char *QGETSIGSHARES="qgetsigs";
+const char *QBSIGSHARES="qbsigs";
+const char *QSIGREC="qsigrec";
+const char *CLSIG="clsig";
+const char *MNAUTH="mnauth";
+const char *ISLOCK="islock";
 } // namespace NetMsgType
 
 /** All known message types. Keep this in the same order as the list of
@@ -65,12 +89,36 @@ const static std::string allNetMessageTypes[] = {
     NetMsgType::FILTERLOAD,
     NetMsgType::FILTERADD,
     NetMsgType::FILTERCLEAR,
+    NetMsgType::REJECT,
     NetMsgType::SENDHEADERS,
     NetMsgType::FEEFILTER,
     NetMsgType::SENDCMPCT,
     NetMsgType::CMPCTBLOCK,
     NetMsgType::GETBLOCKTXN,
     NetMsgType::BLOCKTXN,
+    NetMsgType::SPORK,
+    NetMsgType::GETSPORKS,
+    NetMsgType::SYNCSTATUSCOUNT,
+    NetMsgType::MNGOVERNANCESYNC,
+    NetMsgType::MNGOVERNANCEOBJECT,
+    NetMsgType::MNGOVERNANCEOBJECTVOTE,
+    NetMsgType::GETMNLISTDIFF,
+    NetMsgType::MNLISTDIFF,
+    NetMsgType::QSENDRECSIGS,
+    NetMsgType::QFCOMMITMENT,
+    NetMsgType::QCONTRIB,
+    NetMsgType::QCOMPLAINT,
+    NetMsgType::QJUSTIFICATION,
+    NetMsgType::QPCOMMITMENT,
+    NetMsgType::QWATCH,
+    NetMsgType::QSIGSESANN,
+    NetMsgType::QSIGSHARESINV,
+    NetMsgType::QGETSIGSHARES,
+    NetMsgType::QBSIGSHARES,
+    NetMsgType::QSIGREC,
+    NetMsgType::CLSIG,
+    NetMsgType::MNAUTH,
+    NetMsgType::ISLOCK,
 };
 const static std::vector<std::string> allNetMessageTypesVec(allNetMessageTypes, allNetMessageTypes+ARRAYLEN(allNetMessageTypes));
 
@@ -186,9 +234,30 @@ std::string CInv::GetCommand() const
     case MSG_BLOCK:          return cmd.append(NetMsgType::BLOCK);
     case MSG_FILTERED_BLOCK: return cmd.append(NetMsgType::MERKLEBLOCK);
     case MSG_CMPCT_BLOCK:    return cmd.append(NetMsgType::CMPCTBLOCK);
+    case MSG_SPORK:                         return cmd.append(NetMsgType::SPORK);
+    case MSG_GOVERNANCE_OBJECT:             return cmd.append(NetMsgType::MNGOVERNANCEOBJECT);
+    case MSG_GOVERNANCE_OBJECT_VOTE:        return cmd.append(NetMsgType::MNGOVERNANCEOBJECTVOTE);
+    case MSG_QUORUM_FINAL_COMMITMENT:       return cmd.append(NetMsgType::QFCOMMITMENT);
+    case MSG_QUORUM_CONTRIB:                return cmd.append(NetMsgType::QCONTRIB);
+    case MSG_QUORUM_COMPLAINT:              return cmd.append(NetMsgType::QCOMPLAINT);
+    case MSG_QUORUM_JUSTIFICATION:          return cmd.append(NetMsgType::QJUSTIFICATION);
+    case MSG_QUORUM_PREMATURE_COMMITMENT:   return cmd.append(NetMsgType::QPCOMMITMENT);
+    case MSG_QUORUM_RECOVERED_SIG:          return cmd.append(NetMsgType::QSIGREC);
+    case MSG_CLSIG:                         return cmd.append(NetMsgType::CLSIG);
+    case MSG_ISLOCK:                        return cmd.append(NetMsgType::ISLOCK);
     default:
         throw std::out_of_range(strprintf("CInv::GetCommand(): type=%d unknown type", type));
     }
+}
+
+bool CInv::IsKnownType() const
+{
+    return (type == MSG_TX || type == MSG_WITNESS_TX ||
+        type == MSG_QUORUM_FINAL_COMMITMENT || type == MSG_QUORUM_CONTRIB ||
+        type == MSG_QUORUM_COMPLAINT || type == MSG_QUORUM_JUSTIFICATION ||
+        type == MSG_QUORUM_PREMATURE_COMMITMENT || type == MSG_QUORUM_RECOVERED_SIG ||
+        type == MSG_CLSIG || type == MSG_SPORK || type == MSG_ISLOCK ||
+        type == MSG_GOVERNANCE_OBJECT || type == MSG_GOVERNANCE_OBJECT_VOTE);
 }
 
 std::string CInv::ToString() const

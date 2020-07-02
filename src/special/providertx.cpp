@@ -21,7 +21,7 @@
 #include <wallet/wallet.h>
 
 template <typename ProTx>
-static bool CheckService(const uint256& proTxHash, const ProTx& proTx, CValidationState& state)
+static bool CheckService(const uint256& proTxHash, const ProTx& proTx, TxValidationState& state)
 {
     if (!proTx.addr.IsValid())
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-addr");
@@ -46,7 +46,7 @@ static bool CheckService(const uint256& proTxHash, const ProTx& proTx, CValidati
 }
 
 template <typename ProTx>
-static bool CheckHashSig(const ProTx& proTx, const CKeyID& keyID, CValidationState& state)
+static bool CheckHashSig(const ProTx& proTx, const CKeyID& keyID, TxValidationState& state)
 {
     std::string strError;
     if (!CHashSigner::VerifyHash(::SerializeHash(proTx), keyID, proTx.vchSig, strError)) {
@@ -56,7 +56,7 @@ static bool CheckHashSig(const ProTx& proTx, const CKeyID& keyID, CValidationSta
 }
 
 template <typename ProTx>
-static bool CheckStringSig(const ProTx& proTx, const CKeyID& keyID, CValidationState& state)
+static bool CheckStringSig(const ProTx& proTx, const CKeyID& keyID, TxValidationState& state)
 {
     std::string strError;
     if (!CMessageSigner::VerifyMessage(keyID, proTx.vchSig, proTx.MakeSignString(), strError)) {
@@ -66,7 +66,7 @@ static bool CheckStringSig(const ProTx& proTx, const CKeyID& keyID, CValidationS
 }
 
 template <typename ProTx>
-static bool CheckHashSig(const ProTx& proTx, const CBLSPublicKey& pubKey, CValidationState& state)
+static bool CheckHashSig(const ProTx& proTx, const CBLSPublicKey& pubKey, TxValidationState& state)
 {
     if (!proTx.sig.VerifyInsecure(pubKey, ::SerializeHash(proTx)))
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-sig");
@@ -74,7 +74,7 @@ static bool CheckHashSig(const ProTx& proTx, const CBLSPublicKey& pubKey, CValid
 }
 
 template <typename ProTx>
-static bool CheckInputsHash(const CTransaction& tx, const ProTx& proTx, CValidationState& state)
+static bool CheckInputsHash(const CTransaction& tx, const ProTx& proTx, TxValidationState& state)
 {
     uint256 inputsHash = CalcTxInputsHash(tx);
     if (inputsHash != proTx.inputsHash) {
@@ -84,7 +84,7 @@ static bool CheckInputsHash(const CTransaction& tx, const ProTx& proTx, CValidat
     return true;
 }
 
-bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxValidationState& state)
 {
     if (tx.nType != TRANSACTION_PROVIDER_REGISTER)
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-type");
@@ -190,7 +190,7 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
     return true;
 }
 
-bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxValidationState& state)
 {
     if (tx.nType != TRANSACTION_PROVIDER_UPDATE_SERVICE) {
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-type");
@@ -239,7 +239,7 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVa
     return true;
 }
 
-bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxValidationState& state)
 {
     if (tx.nType != TRANSACTION_PROVIDER_UPDATE_REGISTRAR)
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-type");
@@ -303,7 +303,7 @@ bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVal
     return true;
 }
 
-bool CheckProUpRevTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckProUpRevTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxValidationState& state)
 {
     if (tx.nType != TRANSACTION_PROVIDER_UPDATE_REVOKE)
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-type");

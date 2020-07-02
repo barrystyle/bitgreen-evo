@@ -132,7 +132,7 @@ class CSporkManager
 private:
     static const std::string SERIALIZATION_VERSION_STRING;
 
-    mutable CCriticalSection cs;
+    mutable RecursiveMutex  cs;
     std::map<uint256, CSporkMessage> mapSporksByHash;
     std::map<int, std::map<CKeyID, CSporkMessage> > mapSporksActive;
 

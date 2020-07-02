@@ -40,7 +40,7 @@ public:
     typedef std::pair<NodeId, std::shared_ptr<CDataStream>> BinaryMessage;
 
 private:
-    mutable CCriticalSection cs;
+    mutable RecursiveMutex  cs;
     size_t maxMessagesPerNode;
     std::list<BinaryMessage> pendingMessages;
     std::map<NodeId, size_t> messagesPerNode;
@@ -99,7 +99,7 @@ private:
     friend class CDKGSessionManager;
 
 private:
-    mutable CCriticalSection cs;
+    mutable RecursiveMutex  cs;
     std::atomic<bool> stopRequested{false};
 
     const Consensus::LLMQParams& params;

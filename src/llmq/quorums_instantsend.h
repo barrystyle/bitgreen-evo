@@ -76,7 +76,7 @@ public:
 class CInstantSendManager : public CRecoveredSigsListener
 {
 private:
-    CCriticalSection cs;
+    RecursiveMutex  cs;
     CInstantSendDb db;
 
     std::thread workThread;

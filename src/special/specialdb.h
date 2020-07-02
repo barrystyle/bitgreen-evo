@@ -13,7 +13,7 @@
 class CSpecialDB
 {
 private:
-    CCriticalSection cs;
+    RecursiveMutex  cs;
     CDBWrapper db;
 
     typedef CDBTransaction<CDBWrapper, CDBBatch> RootTransaction;
