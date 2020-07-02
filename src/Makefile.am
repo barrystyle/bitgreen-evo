@@ -19,10 +19,12 @@ else
 LIBUNIVALUE = $(UNIVALUE_LIBS)
 endif
 
-BITCOIN_INCLUDES=-I$(builddir) $(BDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS)
+BITCOIN_INCLUDES=-I$(builddir) $(BDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS)
 
 BITCOIN_INCLUDES += -I$(srcdir)/secp256k1/include
 BITCOIN_INCLUDES += $(UNIVALUE_CFLAGS)
+
+BLS_LIBS=-lchiabls -lgmp
 
 LIBBITCOIN_SERVER=libbitcoin_server.a
 LIBBITCOIN_COMMON=libbitcoin_common.a
@@ -228,6 +230,7 @@ BITCOIN_CORE_H = \
   util/time.h \
   util/translation.h \
   util/url.h \
+  util/validation.h \
   util/vector.h \
   validation.h \
   validationinterface.h \
@@ -255,6 +258,57 @@ BITCOIN_CORE_H = \
   zmq/zmqpublishnotifier.h \
   zmq/zmqrpc.h
 
+# additional #
+BITCOIN_CORE_H += \
+  cachemap.h \
+  cachemultimap.h \
+  ctpl.h \
+  cxxtimer.hpp \
+  governance/governance.h \
+  governance/governance-classes.h \
+  governance/governance-exceptions.h \
+  governance/governance-object.h \
+  governance/governance-validators.h \
+  governance/governance-vote.h \
+  governance/governance-votedb.h \
+  flat-database.h \
+  llmq/quorums.h \
+  llmq/quorums_blockprocessor.h \
+  llmq/quorums_commitment.h \
+  llmq/quorums_chainlocks.h \
+  llmq/quorums_debug.h \
+  llmq/quorums_dkgsessionhandler.h \
+  llmq/quorums_dkgsessionmgr.h \
+  llmq/quorums_dkgsession.h \
+  llmq/quorums_init.h \
+  llmq/quorums_instantsend.h \
+  llmq/quorums_signing.h \
+  llmq/quorums_signing_shares.h \
+  llmq/quorums_utils.h \
+  masternodes/activemasternode.h \
+  masternodes/meta.h \
+  masternodes/notificationinterface.h \
+  masternodes/payments.h \
+  masternodes/sync.h \
+  masternodes/utils.h \
+  messagesigner.h \
+  netfulfilledman.h \
+  pos/kernel.h \
+  pos/sign.h \
+  spork.h \
+  reverselock.h \
+  saltedhasher.h \
+  special/cbtx.h \
+  special/deterministicmns.h \
+  special/mnauth.h \
+  special/providertx.h \
+  special/simplifiedmns.h \
+  special/specialdb.h \
+  special/specialtx.h \
+  special/util.h \
+  unordered_lru_cache.h \
+  util/init.h \
+  util/validation.h
 
 obj/build.h: FORCE
 	@$(MKDIR_P) $(builddir)/obj
@@ -317,6 +371,53 @@ libbitcoin_server_a_SOURCES = \
   validationinterface.cpp \
   versionbits.cpp \
   $(BITCOIN_CORE_H)
+
+# additional #
+libbitcoin_server_a_SOURCES += \
+  governance/governance.cpp \
+  governance/governance-classes.cpp \
+  governance/governance-object.cpp \
+  governance/governance-validators.cpp \
+  governance/governance-vote.cpp \
+  governance/governance-votedb.cpp \
+  llmq/quorums.cpp \
+  llmq/quorums_blockprocessor.cpp \
+  llmq/quorums_commitment.cpp \
+  llmq/quorums_chainlocks.cpp \
+  llmq/quorums_debug.cpp \
+  llmq/quorums_dkgsessionhandler.cpp \
+  llmq/quorums_dkgsessionmgr.cpp \
+  llmq/quorums_dkgsession.cpp \
+  llmq/quorums_init.cpp \
+  llmq/quorums_instantsend.cpp \
+  llmq/quorums_signing.cpp \
+  llmq/quorums_signing_shares.cpp \
+  llmq/quorums_utils.cpp \
+  masternodes/activemasternode.cpp \
+  masternodes/meta.cpp \
+  masternodes/notificationinterface.cpp \
+  masternodes/payments.cpp \
+  masternodes/sync.cpp \
+  masternodes/utils.cpp \
+  messagesigner.cpp \
+  netfulfilledman.cpp \
+  pos/kernel.cpp \
+  pos/sign.cpp \
+  rpc/masternode.cpp \
+  rpc/governance.cpp \
+  rpc/quorum.cpp \
+  rpc/special.cpp \
+  special/cbtx.cpp \
+  special/deterministicmns.cpp \
+  special/mnauth.cpp \
+  special/providertx.cpp \
+  special/simplifiedmns.cpp \
+  special/specialdb.cpp \
+  special/specialtx.cpp \
+  special/util.cpp \
+  spork.cpp \
+  util/init.cpp \
+  util/validation.cpp
 
 if ENABLE_WALLET
 libbitcoin_server_a_SOURCES += wallet/init.cpp
@@ -452,6 +553,11 @@ libbitcoin_consensus_a_SOURCES = \
   util/strencodings.h \
   version.h
 
+# additional #
+libbitcoin_consensus_a_SOURCES += \
+  bls/bls.cpp \
+  bls/bls.h
+
 # common: shared between bitcoind, and bitcoin-qt and non-server tools
 libbitcoin_common_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
 libbitcoin_common_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
@@ -483,8 +589,11 @@ libbitcoin_common_a_SOURCES = \
   script/signingprovider.cpp \
   script/standard.cpp \
   versionbitsinfo.cpp \
-  warnings.cpp \
-  $(BITCOIN_CORE_H)
+  warnings.cpp
+
+# additional #
+libbitcoin_common_a_SOURCES += \
+  spork.cpp
 
 # util: shared between all executables.
 # This library *must* be included to make sure that the glibc
@@ -538,6 +647,10 @@ libbitcoin_cli_a_SOURCES = \
   compat/stdin.h \
   compat/stdin.cpp \
   rpc/client.cpp \
+  uint256.cpp \
+  uint256.h \
+  bls/bls.cpp \
+  bls/bls.h \
   $(BITCOIN_CORE_H)
 
 nodist_libbitcoin_util_a_SOURCES = $(srcdir)/obj/build.h
@@ -675,7 +788,12 @@ CLEANFILES += wallet/test/*.gcda wallet/test/*.gcno
 CLEANFILES += zmq/*.gcda zmq/*.gcno
 CLEANFILES += obj/build.h
 
+IMMER_DIST = immer
+
+DISTCLEANFILES = obj/build.h
+
 EXTRA_DIST = $(CTAES_DIST)
+EXTRA_DIST += $(IMMER_DIST)
 
 
 config/bitcoin-config.h: config/stamp-h1
