@@ -71,6 +71,7 @@ uint64_t GetRand(uint64_t nMax) noexcept;
 std::chrono::microseconds GetRandMicros(std::chrono::microseconds duration_max) noexcept;
 int GetRandInt(int nMax) noexcept;
 uint256 GetRandHash() noexcept;
+bool GetRandBool(double rate);
 
 /**
  * Gather entropy from various sources, feed it into the internal PRNG, and

@@ -602,7 +602,7 @@ bool CSuperblock::IsValid(const CTransaction& txNew, int nBlockHeight, CAmount b
     }
 
     // miner and masternodes should not get more than they would usually get
-    CCoinsViewCache view(pcoinsTip.get());
+    CCoinsViewCache view(&::ChainstateActive().CoinsTip());
     CAmount nValueIn = view.GetValueIn(txNew);
     CAmount nBlockValue = txNew.GetValueOut() - nValueIn;
     if (nBlockValue > blockReward + nPaymentsTotalAmount) {
