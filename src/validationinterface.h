@@ -165,9 +165,6 @@ protected:
      */
     virtual void ChainStateFlushed(const CBlockLocator &locator) {}
 
-    /** Notifies new chain lock block */
-    virtual void NotifyChainLock(const CBlockIndex* pindex) {}
-
     /**
      * Notifies listeners of a block validation result.
      * If the provided BlockValidationState IsValid, the provided block
@@ -180,9 +177,14 @@ protected:
      * has been received and connected to the headers tree, though not validated yet */
     virtual void NewPoWValidBlock(const CBlockIndex *pindex, const std::shared_ptr<const CBlock>& block) {};
 
+    /** Notifies new chain lock block */
+    virtual void NotifyChainLock(const CBlockIndex* pindex) {}
+    /** Notifies masternode list changes */
+    virtual void NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff) {}
     virtual void NotifyGovernanceVote(const CGovernanceVote &vote) {}
     virtual void NotifyGovernanceObject(const CGovernanceObject &object) {}
-
+    virtual void NotifyTransactionLock(const CTransaction &tx) {}
+    virtual void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) {}
     friend class CMainSignals;
 };
 
@@ -217,6 +219,10 @@ public:
     void NewPoWValidBlock(const CBlockIndex *, const std::shared_ptr<const CBlock>&);
     void NotifyGovernanceVote(const CGovernanceVote&);
     void NotifyGovernanceObject(const CGovernanceObject&);
+    /** Notifies listeners of a ChainLock. */
+    void NotifyChainLock(const CBlockIndex*);
+    /** Notifies masternode list changes */
+    void NotifyMasternodeListChanged(bool, const CDeterministicMNList&, const CDeterministicMNListDiff&);
 };
 
 CMainSignals& GetMainSignals();

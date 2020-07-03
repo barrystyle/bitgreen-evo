@@ -1378,11 +1378,6 @@ bool AppInitMain(NodeContext& node)
     CScheduler::Function serviceLoop = [&node]{ node.scheduler->serviceQueue(); };
     threadGroup.create_thread(std::bind(&TraceThread<CScheduler::Function>, "scheduler", serviceLoop));
 
-    // Gather some entropy once per minute.
-    node.scheduler->scheduleEvery([]{
-        RandAddPeriodic();
-    }, std::chrono::minutes{1});
-
     GetMainSignals().RegisterBackgroundSignalScheduler(*node.scheduler);
 
     // Create client interfaces for wallets that are supposed to be loaded

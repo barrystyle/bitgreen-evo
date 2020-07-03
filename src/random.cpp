@@ -1,26 +1,23 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Bitcoin Core developers
+// Copyright (c) 2009-2018 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <random.h>
 
-#include <compat/cpuid.h>
-#include <crypto/sha256.h>
 #include <crypto/sha512.h>
 #include <support/cleanse.h>
 #ifdef WIN32
 #include <compat.h> // for Windows API
 #include <wincrypt.h>
 #endif
-#include <logging.h>  // for LogPrintf()
-#include <sync.h>     // for Mutex
-#include <util/time.h> // for GetTimeMicros()
+#include <logging.h>  // for LogPrint()
+#include <sync.h>     // for WAIT_LOCK
+#include <util/time.h> // for GetTime()
 
 #include <stdlib.h>
+#include <chrono>
 #include <thread>
-
-#include <randomenv.h>
 
 #include <support/allocators/secure.h>
 
@@ -43,6 +40,16 @@
 #include <util/strencodings.h> // for ARRAYLEN
 #include <sys/sysctl.h>
 #endif
+
+#include <mutex>
+
+#if defined(__x86_64__) || defined(__amd64__) || defined(__i386__)
+#include <cpuid.h>
+#endif
+
+#include <openssl/err.h>
+#include <openssl/rand.h>
+#include <openssl/conf.h>
 
 [[noreturn]] static void RandFailure()
 {
@@ -70,7 +77,7 @@ static inline int64_t GetPerformanceCounter() noexcept
 #endif
 }
 
-#ifdef HAVE_GETCPUID
+#if defined(__x86_64__) || defined(__amd64__) || defined(__i386__)
 static bool g_rdrand_supported = false;
 static bool g_rdseed_supported = false;
 static constexpr uint32_t CPUID_F1_ECX_RDRAND = 0x40000000;
@@ -81,6 +88,15 @@ static_assert(CPUID_F1_ECX_RDRAND == bit_RDRND, "Unexpected value for bit_RDRND"
 #ifdef bit_RDSEED
 static_assert(CPUID_F7_EBX_RDSEED == bit_RDSEED, "Unexpected value for bit_RDSEED");
 #endif
+static void inline GetCPUID(uint32_t leaf, uint32_t subleaf, uint32_t& a, uint32_t& b, uint32_t& c, uint32_t& d)
+{
+    // We can't use __get_cpuid as it doesn't support subleafs.
+#ifdef __GNUC__
+    __cpuid_count(leaf, subleaf, a, b, c, d);
+#else
+    __asm__ ("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "0"(leaf), "2"(subleaf));
+#endif
+}
 
 static void InitHardwareRand()
 {
@@ -97,7 +113,7 @@ static void InitHardwareRand()
 
 static void ReportHardwareRand()
 {
-    // This must be done in a separate function, as InitHardwareRand() may be indirectly called
+    // This must be done in a separate function, as HWRandInit() may be indirectly called
     // from global constructors, before logging is initialized.
     if (g_rdseed_supported) {
         LogPrintf("Using RdSeed as additional entropy source\n");
@@ -179,7 +195,7 @@ static uint64_t GetRdSeed() noexcept
 /* Access to other hardware random number generators could be added here later,
  * assuming it is sufficiently fast (in the order of a few hundred CPU cycles).
  * Slower sources should probably be invoked separately, and/or only from
- * RandAddPeriodic (which is called once a minute).
+ * RandAddSeedSleep (which is called during idle background operation).
  */
 static void InitHardwareRand() {}
 static void ReportHardwareRand() {}
@@ -249,6 +265,44 @@ static void Strengthen(const unsigned char (&seed)[32], int microseconds, CSHA51
     memory_cleanse(buffer, sizeof(buffer));
 }
 
+static void RandAddSeedPerfmon(CSHA512& hasher)
+{
+#ifdef WIN32
+    // Don't need this on Linux, OpenSSL automatically uses /dev/urandom
+    // Seed with the entire set of perfmon data
+
+    // This can take up to 2 seconds, so only do it every 10 minutes
+    static int64_t nLastPerfmon;
+    if (GetTime() < nLastPerfmon + 10 * 60)
+        return;
+    nLastPerfmon = GetTime();
+
+    std::vector<unsigned char> vData(250000, 0);
+    long ret = 0;
+    unsigned long nSize = 0;
+    const size_t nMaxSize = 10000000; // Bail out at more than 10MB of performance data
+    while (true) {
+        nSize = vData.size();
+        ret = RegQueryValueExA(HKEY_PERFORMANCE_DATA, "Global", nullptr, nullptr, vData.data(), &nSize);
+        if (ret != ERROR_MORE_DATA || vData.size() >= nMaxSize)
+            break;
+        vData.resize(std::max((vData.size() * 3) / 2, nMaxSize)); // Grow size of buffer exponentially
+    }
+    RegCloseKey(HKEY_PERFORMANCE_DATA);
+    if (ret == ERROR_SUCCESS) {
+        hasher.Write(vData.data(), nSize);
+        memory_cleanse(vData.data(), nSize);
+    } else {
+        // Performance data is only a best-effort attempt at improving the
+        // situation when the OS randomness (and other sources) aren't
+        // adequate. As a result, failure to read it is isn't considered critical,
+        // so we don't call RandFailure().
+        // TODO: Add logging when the logger is made functional before global
+        // constructors have been invoked.
+    }
+#endif
+}
+
 #ifndef WIN32
 /** Fallback: get 32 bytes of system entropy from /dev/urandom. The most
  * compatible way to get cryptographic randomness on UNIX-ish platforms.
@@ -315,16 +369,19 @@ void GetOSRand(unsigned char *ent32)
         RandFailure();
     }
 #elif defined(HAVE_GETENTROPY_RAND) && defined(MAC_OSX)
-    /* getentropy() is available on macOS 10.12 and later.
-     */
-    if (getentropy(ent32, NUM_OS_RANDOM_BYTES) != 0) {
-        RandFailure();
+    // We need a fallback for OSX < 10.12
+    if (&getentropy != nullptr) {
+        if (getentropy(ent32, NUM_OS_RANDOM_BYTES) != 0) {
+            RandFailure();
+        }
+    } else {
+        GetDevURandom(ent32);
     }
 #elif defined(HAVE_SYSCTL_ARND)
-    /* FreeBSD, NetBSD and similar. It is possible for the call to return less
+    /* FreeBSD and similar. It is possible for the call to return less
      * bytes than requested, so need to read in a loop.
      */
-    static int name[2] = {CTL_KERN, KERN_ARND};
+    static const int name[2] = {CTL_KERN, KERN_ARND};
     int have = 0;
     do {
         size_t len = NUM_OS_RANDOM_BYTES - have;
@@ -341,6 +398,8 @@ void GetOSRand(unsigned char *ent32)
 #endif
 }
 
+void LockingCallbackOpenSSL(int mode, int i, const char* file, int line);
+
 namespace {
 
 class RNGState {
@@ -356,47 +415,31 @@ class RNGState {
     unsigned char m_state[32] GUARDED_BY(m_mutex) = {0};
     uint64_t m_counter GUARDED_BY(m_mutex) = 0;
     bool m_strongly_seeded GUARDED_BY(m_mutex) = false;
-
-    Mutex m_events_mutex;
-    CSHA256 m_events_hasher GUARDED_BY(m_events_mutex);
+    std::unique_ptr<Mutex[]> m_mutex_openssl;
 
 public:
     RNGState() noexcept
     {
         InitHardwareRand();
+
+        // Init OpenSSL library multithreading support
+        m_mutex_openssl.reset(new Mutex[CRYPTO_num_locks()]);
+        CRYPTO_set_locking_callback(LockingCallbackOpenSSL);
+
+        // OpenSSL can optionally load a config file which lists optional loadable modules and engines.
+        // We don't use them so we don't require the config. However some of our libs may call functions
+        // which attempt to load the config file, possibly resulting in an exit() or crash if it is missing
+        // or corrupt. Explicitly tell OpenSSL not to try to load the file. The result for our libs will be
+        // that the config appears to have been loaded and there are no modules/engines available.
+        OPENSSL_no_config();
     }
 
     ~RNGState()
     {
-    }
-
-    void AddEvent(uint32_t event_info) noexcept
-    {
-        LOCK(m_events_mutex);
-
-        m_events_hasher.Write((const unsigned char *)&event_info, sizeof(event_info));
-        // Get the low four bytes of the performance counter. This translates to roughly the
-        // subsecond part.
-        uint32_t perfcounter = (GetPerformanceCounter() & 0xffffffff);
-        m_events_hasher.Write((const unsigned char*)&perfcounter, sizeof(perfcounter));
-    }
-
-    /**
-     * Feed (the hash of) all events added through AddEvent() to hasher.
-     */
-    void SeedEvents(CSHA512& hasher) noexcept
-    {
-        // We use only SHA256 for the events hashing to get the ASM speedups we have for SHA256,
-        // since we want it to be fast as network peers may be able to trigger it repeatedly.
-        LOCK(m_events_mutex);
-
-        unsigned char events_hash[32];
-        m_events_hasher.Finalize(events_hash);
-        hasher.Write(events_hash, 32);
-
-        // Re-initialize the hasher with the finalized state to use later.
-        m_events_hasher.Reset();
-        m_events_hasher.Write(events_hash, 32);
+        // Securely erase the memory used by the OpenSSL PRNG
+        RAND_cleanup();
+        // Shutdown OpenSSL library multithreading support
+        CRYPTO_set_locking_callback(nullptr);
     }
 
     /** Extract up to 32 bytes of entropy from the RNG state, mixing in new entropy from hasher.
@@ -432,6 +475,8 @@ public:
         memory_cleanse(buf, 64);
         return ret;
     }
+
+    Mutex& GetOpenSSLMutex(int i) { return m_mutex_openssl[i]; }
 };
 
 RNGState& GetRNGState() noexcept
@@ -443,9 +488,30 @@ RNGState& GetRNGState() noexcept
 }
 }
 
+void LockingCallbackOpenSSL(int mode, int i, const char* file, int line) NO_THREAD_SAFETY_ANALYSIS
+{
+    RNGState& rng = GetRNGState();
+
+    if (mode & CRYPTO_LOCK) {
+        rng.GetOpenSSLMutex(i).lock();
+    } else {
+        rng.GetOpenSSLMutex(i).unlock();
+    }
+}
+
 /* A note on the use of noexcept in the seeding functions below:
  *
- * None of the RNG code should ever throw any exception.
+ * None of the RNG code should ever throw any exception, with the sole exception
+ * of MilliSleep in SeedSleep, which can (and does) support interruptions which
+ * cause a boost::thread_interrupted to be thrown.
+ *
+ * This means that SeedSleep, and all functions that invoke it are throwing.
+ * However, we know that GetRandBytes() and GetStrongRandBytes() never trigger
+ * this sleeping logic, so they are noexcept. The same is true for all the
+ * GetRand*() functions that use GetRandBytes() indirectly.
+ *
+ * TODO: After moving away from interruptible boost-based thread management,
+ * everything can become noexcept here.
  */
 
 static void SeedTimestamp(CSHA512& hasher) noexcept
@@ -469,7 +535,7 @@ static void SeedFast(CSHA512& hasher) noexcept
     SeedTimestamp(hasher);
 }
 
-static void SeedSlow(CSHA512& hasher, RNGState& rng) noexcept
+static void SeedSlow(CSHA512& hasher) noexcept
 {
     unsigned char buffer[32];
 
@@ -480,8 +546,9 @@ static void SeedSlow(CSHA512& hasher, RNGState& rng) noexcept
     GetOSRand(buffer);
     hasher.Write(buffer, sizeof(buffer));
 
-    // Add the events hasher into the mix
-    rng.SeedEvents(hasher);
+    // OpenSSL RNG (for now)
+    RAND_bytes(buffer, sizeof(buffer));
+    hasher.Write(buffer, sizeof(buffer));
 
     // High-precision timestamp.
     //
@@ -491,16 +558,22 @@ static void SeedSlow(CSHA512& hasher, RNGState& rng) noexcept
 }
 
 /** Extract entropy from rng, strengthen it, and feed it into hasher. */
-static void SeedStrengthen(CSHA512& hasher, RNGState& rng, int microseconds) noexcept
+static void SeedStrengthen(CSHA512& hasher, RNGState& rng) noexcept
 {
-    // Generate 32 bytes of entropy from the RNG, and a copy of the entropy already in hasher.
-    unsigned char strengthen_seed[32];
-    rng.MixExtract(strengthen_seed, sizeof(strengthen_seed), CSHA512(hasher), false);
-    // Strengthen the seed, and feed it into hasher.
-    Strengthen(strengthen_seed, microseconds, hasher);
+    static std::atomic<int64_t> last_strengthen{0};
+    int64_t last_time = last_strengthen.load();
+    int64_t current_time = GetTimeMicros();
+    if (current_time > last_time + 60000000) { // Only run once a minute
+        // Generate 32 bytes of entropy from the RNG, and a copy of the entropy already in hasher.
+        unsigned char strengthen_seed[32];
+        rng.MixExtract(strengthen_seed, sizeof(strengthen_seed), CSHA512(hasher), false);
+        // Strengthen it for 10ms (100ms on first run), and feed it into hasher.
+        Strengthen(strengthen_seed, last_time == 0 ? 100000 : 10000, hasher);
+        last_strengthen = current_time;
+    }
 }
 
-static void SeedPeriodic(CSHA512& hasher, RNGState& rng) noexcept
+static void SeedSleep(CSHA512& hasher, RNGState& rng)
 {
     // Everything that the 'fast' seeder includes
     SeedFast(hasher);
@@ -508,45 +581,45 @@ static void SeedPeriodic(CSHA512& hasher, RNGState& rng) noexcept
     // High-precision timestamp
     SeedTimestamp(hasher);
 
-    // Add the events hasher into the mix
-    rng.SeedEvents(hasher);
+    // Sleep for 1ms
+    MilliSleep(1);
 
-    // Dynamic environment data (performance monitoring, ...)
-    auto old_size = hasher.Size();
-    RandAddDynamicEnv(hasher);
-    LogPrint(BCLog::RAND, "Feeding %i bytes of dynamic environment data into RNG\n", hasher.Size() - old_size);
+    // High-precision timestamp after sleeping (as we commit to both the time before and after, this measures the delay)
+    SeedTimestamp(hasher);
 
-    // Strengthen for 10 ms
-    SeedStrengthen(hasher, rng, 10000);
+    // Windows performance monitor data (once every 10 minutes)
+    RandAddSeedPerfmon(hasher);
+
+    // Strengthen every minute
+    SeedStrengthen(hasher, rng);
 }
 
 static void SeedStartup(CSHA512& hasher, RNGState& rng) noexcept
 {
+#ifdef WIN32
+    RAND_screen();
+#endif
+
     // Gather 256 bits of hardware randomness, if available
     SeedHardwareSlow(hasher);
 
     // Everything that the 'slow' seeder includes.
-    SeedSlow(hasher, rng);
+    SeedSlow(hasher);
 
-    // Dynamic environment data (performance monitoring, ...)
-    auto old_size = hasher.Size();
-    RandAddDynamicEnv(hasher);
+    // Windows performance monitor data.
+    RandAddSeedPerfmon(hasher);
 
-    // Static environment data
-    RandAddStaticEnv(hasher);
-    LogPrint(BCLog::RAND, "Feeding %i bytes of environment data into RNG\n", hasher.Size() - old_size);
-
-    // Strengthen for 100 ms
-    SeedStrengthen(hasher, rng, 100000);
+    // Strengthen
+    SeedStrengthen(hasher, rng);
 }
 
 enum class RNGLevel {
     FAST, //!< Automatically called by GetRandBytes
     SLOW, //!< Automatically called by GetStrongRandBytes
-    PERIODIC, //!< Called by RandAddPeriodic()
+    SLEEP, //!< Called by RandAddSeedSleep()
 };
 
-static void ProcRand(unsigned char* out, int num, RNGLevel level) noexcept
+static void ProcRand(unsigned char* out, int num, RNGLevel level)
 {
     // Make sure the RNG is initialized first (as all Seed* function possibly need hwrand to be available).
     RNGState& rng = GetRNGState();
@@ -559,10 +632,10 @@ static void ProcRand(unsigned char* out, int num, RNGLevel level) noexcept
         SeedFast(hasher);
         break;
     case RNGLevel::SLOW:
-        SeedSlow(hasher, rng);
+        SeedSlow(hasher);
         break;
-    case RNGLevel::PERIODIC:
-        SeedPeriodic(hasher, rng);
+    case RNGLevel::SLEEP:
+        SeedSleep(hasher, rng);
         break;
     }
 
@@ -573,12 +646,21 @@ static void ProcRand(unsigned char* out, int num, RNGLevel level) noexcept
         SeedStartup(startup_hasher, rng);
         rng.MixExtract(out, num, std::move(startup_hasher), true);
     }
+
+    // For anything but the 'fast' level, feed the resulting RNG output (after an additional hashing step) back into OpenSSL.
+    if (level != RNGLevel::FAST) {
+        unsigned char buf[64];
+        CSHA512().Write(out, num).Finalize(buf);
+        RAND_add(buf, sizeof(buf), num);
+        memory_cleanse(buf, 64);
+    }
 }
 
 void GetRandBytes(unsigned char* buf, int num) noexcept { ProcRand(buf, num, RNGLevel::FAST); }
 void GetStrongRandBytes(unsigned char* buf, int num) noexcept { ProcRand(buf, num, RNGLevel::SLOW); }
 void RandAddPeriodic() noexcept { ProcRand(nullptr, 0, RNGLevel::PERIODIC); }
 void RandAddEvent(const uint32_t event_info) noexcept { GetRNGState().AddEvent(event_info); }
+void RandAddSeedSleep() { ProcRand(nullptr, 0, RNGLevel::SLEEP); }
 
 bool g_mock_deterministic_tests{false};
 
@@ -587,14 +669,14 @@ uint64_t GetRand(uint64_t nMax) noexcept
     return FastRandomContext(g_mock_deterministic_tests).randrange(nMax);
 }
 
-std::chrono::microseconds GetRandMicros(std::chrono::microseconds duration_max) noexcept
-{
-    return std::chrono::microseconds{GetRand(duration_max.count())};
-}
-
 int GetRandInt(int nMax) noexcept
 {
     return GetRand(nMax);
+}
+
+std::chrono::microseconds GetRandMicros(std::chrono::microseconds duration_max) noexcept
+{
+    return std::chrono::microseconds{GetRand(duration_max.count())};
 }
 
 uint256 GetRandHash() noexcept
@@ -653,7 +735,7 @@ bool Random_SanityCheck()
     uint64_t start = GetPerformanceCounter();
 
     /* This does not measure the quality of randomness, but it does test that
-     * GetOSRand() overwrites all 32 bytes of the output given a maximum
+     * OSRandom() overwrites all 32 bytes of the output given a maximum
      * number of tries.
      */
     static const ssize_t MAX_TRIES = 1024;

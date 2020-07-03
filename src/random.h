@@ -1,17 +1,17 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Bitcoin Core developers
+// Copyright (c) 2009-2018 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_RANDOM_H
-#define BITCOIN_RANDOM_H
+#ifndef BITGREEN_RANDOM_H
+#define BITGREEN_RANDOM_H
 
 #include <crypto/chacha20.h>
 #include <crypto/common.h>
 #include <uint256.h>
 
-#include <chrono> // For std::chrono::microseconds
-#include <cstdint>
+#include <chrono>
+#include <stdint.h>
 #include <limits>
 
 /**
@@ -35,22 +35,24 @@
  *   that fast seeding includes, but additionally:
  *   - OS entropy (/dev/urandom, getrandom(), ...). The application will terminate if
  *     this entropy source fails.
+ *   - Bytes from OpenSSL's RNG (which itself may be seeded from various sources)
  *   - Another high-precision timestamp (indirectly committing to a benchmark of all the
  *     previous sources).
  *   These entropy sources are slower, but designed to make sure the RNG state contains
  *   fresh data that is unpredictable to attackers.
  *
- * - RandAddPeriodic() seeds everything that fast seeding includes, but additionally:
- *   - A high-precision timestamp
- *   - Dynamic environment data (performance monitoring, ...)
- *   - Strengthen the entropy for 10 ms using repeated SHA512.
- *   This is run once every minute.
+ * - RandAddSeedSleep() seeds everything that fast seeding includes, but additionally:
+ *   - A high-precision timestamp before and after sleeping 1ms.
+ *   - (On Windows) Once every 10 minutes, performance monitoring data from the OS.
+ -   - Once every minute, strengthen the entropy for 10 ms using repeated SHA512.
+ *   These just exploit the fact the system is idle to improve the quality of the RNG
+ *   slightly.
  *
  * On first use of the RNG (regardless of what function is called first), all entropy
  * sources used in the 'slow' seeder are included, but also:
  * - 256 bits from the hardware RNG (rdseed or rdrand) when available.
- * - Dynamic environment data (performance monitoring, ...)
- * - Static environment data
+ * - (On Windows) Performance monitoring data from the OS.
+ * - (On Windows) Through OpenSSL, the screen contents.
  * - Strengthen the entropy for 100 ms using repeated SHA512.
  *
  * When mixing in new entropy, H = SHA512(entropy || old_rng_state) is computed, and
@@ -84,18 +86,11 @@ bool GetRandBool(double rate);
 void GetStrongRandBytes(unsigned char* buf, int num) noexcept;
 
 /**
- * Gather entropy from various expensive sources, and feed them to the PRNG state.
+ * Sleep for 1ms, gather entropy from various sources, and feed them to the PRNG state.
  *
  * Thread-safe.
  */
-void RandAddPeriodic() noexcept;
-
-/**
- * Gathers entropy from the low bits of the time at which events occur. Should
- * be called with a uint32_t describing the event at the time an event occurs.
- *
- * Thread-safe.
- */
+void RandAddSeedSleep();
 void RandAddEvent(const uint32_t event_info) noexcept;
 
 /**
@@ -104,8 +99,7 @@ void RandAddEvent(const uint32_t event_info) noexcept;
  *
  * This class is not thread-safe.
  */
-class FastRandomContext
-{
+class FastRandomContext {
 private:
     bool requires_seed;
     ChaCha20 rng;
@@ -134,7 +128,7 @@ private:
     }
 
 public:
-    explicit FastRandomContext(bool fDeterministic = false) noexcept;
+    explicit FastRandomContext(bool fDeterministic=false) noexcept;
 
     /** Initialize with explicit seed (only for testing) */
     explicit FastRandomContext(const uint256& seed) noexcept;
@@ -157,8 +151,7 @@ public:
     }
 
     /** Generate a random (bits)-bit integer. */
-    uint64_t randbits(int bits) noexcept
-    {
+    uint64_t randbits(int bits) noexcept {
         if (bits == 0) {
             return 0;
         } else if (bits > 32) {
@@ -172,12 +165,9 @@ public:
         }
     }
 
-    /** Generate a random integer in the range [0..range).
-     * Precondition: range > 0.
-     */
+    /** Generate a random integer in the range [0..range). */
     uint64_t randrange(uint64_t range) noexcept
     {
-        assert(range);
         --range;
         int bits = CountBits(range);
         while (true) {
@@ -203,6 +193,11 @@ public:
     static constexpr uint64_t min() { return 0; }
     static constexpr uint64_t max() { return std::numeric_limits<uint64_t>::max(); }
     inline uint64_t operator()() noexcept { return rand64(); }
+    int64_t operator()(int64_t nMax)
+    {
+        return operator()() % nMax;
+    }
+
 };
 
 /** More efficient than using std::shuffle on a FastRandomContext.
@@ -215,7 +210,7 @@ public:
  * debug mode detects and panics on. This is a known issue, see
  * https://stackoverflow.com/questions/22915325/avoiding-self-assignment-in-stdshuffle
  */
-template <typename I, typename R>
+template<typename I, typename R>
 void Shuffle(I first, I last, R&& rng)
 {
     while (first != last) {
@@ -238,7 +233,7 @@ static const int NUM_OS_RANDOM_BYTES = 32;
 /** Get 32 bytes of system entropy. Do not use this in application code: use
  * GetStrongRandBytes instead.
  */
-void GetOSRand(unsigned char* ent32);
+void GetOSRand(unsigned char *ent32);
 
 /** Check that OS randomness is available and returning the requested number
  * of bytes.
@@ -253,4 +248,4 @@ bool Random_SanityCheck();
  */
 void RandomInit();
 
-#endif // BITCOIN_RANDOM_H
+#endif // BITGREEN_RANDOM_H

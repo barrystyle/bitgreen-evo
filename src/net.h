@@ -15,27 +15,26 @@
 #include <crypto/siphash.h>
 #include <hash.h>
 #include <limitedmap.h>
-#include <netaddress.h>
 #include <net_permissions.h>
+#include <netaddress.h>
 #include <policy/feerate.h>
 #include <protocol.h>
 #include <random.h>
 #include <streams.h>
 #include <sync.h>
-#include <uint256.h>
 #include <threadinterrupt.h>
+#include <uint256.h>
 
 #include <atomic>
+#include <condition_variable>
 #include <deque>
+#include <memory>
 #include <stdint.h>
 #include <thread>
-#include <memory>
-#include <condition_variable>
 
 #ifndef WIN32
 #include <arpa/inet.h>
 #endif
-
 
 class CScheduler;
 class CNode;
@@ -89,12 +88,11 @@ static const int64_t DEFAULT_PEER_CONNECT_TIMEOUT = 60;
 
 static const bool DEFAULT_FORCEDNSSEED = false;
 static const size_t DEFAULT_MAXRECEIVEBUFFER = 5 * 1000;
-static const size_t DEFAULT_MAXSENDBUFFER    = 1 * 1000;
+static const size_t DEFAULT_MAXSENDBUFFER = 1 * 1000;
 
 typedef int64_t NodeId;
 
-struct AddedNodeInfo
-{
+struct AddedNodeInfo {
     std::string strAddedNode;
     CService resolvedAddress;
     bool fConnected;
@@ -104,8 +102,7 @@ struct AddedNodeInfo
 class CNodeStats;
 class CClientUIInterface;
 
-struct CSerializedNetMsg
-{
+struct CSerializedNetMsg {
     CSerializedNetMsg() = default;
     CSerializedNetMsg(CSerializedNetMsg&&) = default;
     CSerializedNetMsg& operator=(CSerializedNetMsg&&) = default;
@@ -117,12 +114,10 @@ struct CSerializedNetMsg
     std::string command;
 };
 
-
 class NetEventsInterface;
 class CConnman
 {
 public:
-
     enum NumConnections {
         CONNECTIONS_NONE = 0,
         CONNECTIONS_IN = (1U << 0),
@@ -130,8 +125,7 @@ public:
         CONNECTIONS_ALL = (CONNECTIONS_IN | CONNECTIONS_OUT),
     };
 
-    struct Options
-    {
+    struct Options {
         ServiceFlags nLocalServices = NODE_NONE;
         int nMaxConnections = 0;
         int m_max_outbound_full_relay = 0;
@@ -157,7 +151,8 @@ public:
         std::vector<bool> m_asmap;
     };
 
-    void Init(const Options& connOptions) {
+    void Init(const Options& connOptions)
+    {
         nLocalServices = connOptions.nLocalServices;
         nMaxConnections = connOptions.nMaxConnections;
         m_max_outbound_full_relay = std::min(connOptions.m_max_outbound_full_relay, connOptions.nMaxConnections);
@@ -201,7 +196,7 @@ public:
     bool GetNetworkActive() const { return fNetworkActive; };
     bool GetUseAddrmanOutgoing() const { return m_use_addrman_outgoing; };
     void SetNetworkActive(bool active);
-    void OpenNetworkConnection(const CAddress& addrConnect, bool fCountFailure, CSemaphoreGrant *grantOutbound = nullptr, const char *strDest = nullptr, bool fOneShot = false, bool fFeeler = false, bool manual_connection = false, bool fConnectToMasternode = false);
+    void OpenNetworkConnection(const CAddress& addrConnect, bool fCountFailure, CSemaphoreGrant* grantOutbound = nullptr, const char* strDest = nullptr, bool fOneShot = false, bool fFeeler = false, bool manual_connection = false, bool fConnectToMasternode = false);
     void OpenMasternodeConnection(const CAddress& addrConnect);
     bool CheckIncomingNonce(uint64_t nonce);
 
@@ -211,7 +206,7 @@ public:
 
     void PushMessage(CNode* pnode, CSerializedNetMsg&& msg);
 
-    template<typename Callable>
+    template <typename Callable>
     void ForEachNode(Callable&& func)
     {
         LOCK(cs_vNodes);
@@ -221,7 +216,7 @@ public:
         }
     };
 
-    template<typename Callable>
+    template <typename Callable>
     void ForEachNode(Callable&& func) const
     {
         LOCK(cs_vNodes);
@@ -231,7 +226,7 @@ public:
         }
     };
 
-    template<typename Callable, typename CallableAfter>
+    template <typename Callable, typename CallableAfter>
     void ForEachNodeThen(Callable&& pre, CallableAfter&& post)
     {
         LOCK(cs_vNodes);
@@ -242,7 +237,7 @@ public:
         post();
     };
 
-    template<typename Callable, typename CallableAfter>
+    template <typename Callable, typename CallableAfter>
     void ForEachNodeThen(Callable&& pre, CallableAfter&& post) const
     {
         LOCK(cs_vNodes);
@@ -257,7 +252,8 @@ public:
     void ReleaseNodeVector(const std::vector<CNode*>& vecNodes);
 
     struct CFullyConnectedOnly {
-        bool operator() (const CNode* pnode) const {
+        bool operator()(const CNode* pnode) const
+        {
             return NodeFullyConnected(pnode);
         }
     };
@@ -265,7 +261,7 @@ public:
     constexpr static const CFullyConnectedOnly FullyConnectedOnly{};
     // Addrman functions
     size_t GetAddressCount() const;
-    void SetServices(const CService &addr, ServiceFlags nServices);
+    void SetServices(const CService& addr, ServiceFlags nServices);
     void MarkAddressGood(const CAddress& addr);
     void AddNewAddresses(const std::vector<CAddress>& vAddr, const CAddress& addrFrom, int64_t nTimePenalty = 0);
     std::vector<CAddress> GetAddresses();
@@ -351,13 +347,13 @@ public:
     bool IsMasternodeQuorumNode(const CNode* pnode);
 
     //! Relay message only to minProtoVersion peers.
-    void RelayInv(CInv &inv, const int minProtoVersion = MIN_PEER_PROTO_VERSION);
+    void RelayInv(CInv& inv, const int minProtoVersion = MIN_PEER_PROTO_VERSION);
 
     //! Relay message based to minProtoVersion peers filtered by relatedTx.
-    void RelayInvFiltered(CInv &inv, const CTransaction &relatedTx, const int minProtoVersion = MIN_PEER_PROTO_VERSION);
+    void RelayInvFiltered(CInv& inv, const CTransaction& relatedTx, const int minProtoVersion = MIN_PEER_PROTO_VERSION);
 
     //! Relay message based to minProtoVersion peers filtered by relatedTxHash.
-    void RelayInvFiltered(CInv &inv, const uint256 &relatedTxHash, const int minProtoVersion = MIN_PEER_PROTO_VERSION);
+    void RelayInvFiltered(CInv& inv, const uint256& relatedTxHash, const int minProtoVersion = MIN_PEER_PROTO_VERSION);
 
 private:
     struct ListenSocket {
@@ -365,6 +361,7 @@ private:
         SOCKET socket;
         inline void AddSocketPermissionFlags(NetPermissionFlags& flags) const { NetPermissions::AddFlag(flags, m_permissions); }
         ListenSocket(SOCKET socket_, NetPermissionFlags permissions_) : socket(socket_), m_permissions(permissions_) {}
+
     private:
         NetPermissionFlags m_permissions;
     };
@@ -380,9 +377,9 @@ private:
     void AcceptConnection(const ListenSocket& hListenSocket);
     void DisconnectNodes();
     void NotifyNumConnectionsChanged();
-    void InactivityCheck(CNode *pnode);
-    bool GenerateSelectSet(std::set<SOCKET> &recv_set, std::set<SOCKET> &send_set, std::set<SOCKET> &error_set);
-    void SocketEvents(std::set<SOCKET> &recv_set, std::set<SOCKET> &send_set, std::set<SOCKET> &error_set);
+    void InactivityCheck(CNode* pnode);
+    bool GenerateSelectSet(std::set<SOCKET>& recv_set, std::set<SOCKET>& send_set, std::set<SOCKET>& error_set);
+    void SocketEvents(std::set<SOCKET>& recv_set, std::set<SOCKET>& send_set, std::set<SOCKET>& error_set);
     void SocketHandler();
     void ThreadSocketHandler();
     void ThreadDNSAddressSeed();
@@ -396,14 +393,14 @@ private:
     CNode* FindNode(const CService& addr);
 
     bool AttemptToEvictConnection();
-    CNode* ConnectNode(CAddress addrConnect, const char *pszDest, bool fCountFailure, bool manual_connection, bool block_relay_only);
-    void AddWhitelistPermissionFlags(NetPermissionFlags& flags, const CNetAddr &addr) const;
+    CNode* ConnectNode(CAddress addrConnect, const char* pszDest, bool fCountFailure, bool manual_connection, bool block_relay_only);
+    void AddWhitelistPermissionFlags(NetPermissionFlags& flags, const CNetAddr& addr) const;
 
     void DeleteNode(CNode* pnode);
 
     NodeId GetNewNodeId();
 
-    size_t SocketSendData(CNode *pnode) const;
+    size_t SocketSendData(CNode* pnode) const;
     void DumpAddresses();
 
     // Network stats
@@ -416,8 +413,8 @@ private:
     // Network usage totals
     RecursiveMutex cs_totalBytesRecv;
     RecursiveMutex cs_totalBytesSent;
-    uint64_t nTotalBytesRecv GUARDED_BY(cs_totalBytesRecv) {0};
-    uint64_t nTotalBytesSent GUARDED_BY(cs_totalBytesSent) {0};
+    uint64_t nTotalBytesRecv GUARDED_BY(cs_totalBytesRecv){0};
+    uint64_t nTotalBytesSent GUARDED_BY(cs_totalBytesSent){0};
 
     // outbound limit & stats
     uint64_t nMaxOutboundTotalBytesSentInCycle GUARDED_BY(cs_totalBytesSent);
@@ -526,11 +523,10 @@ void InterruptMapPort();
 void StopMapPort();
 unsigned short GetListenPort();
 
-struct CombinerAll
-{
+struct CombinerAll {
     typedef bool result_type;
 
-    template<typename I>
+    template <typename I>
     bool operator()(I first, I last) const
     {
         while (first != last) {
@@ -560,8 +556,7 @@ protected:
     ~NetEventsInterface() = default;
 };
 
-enum
-{
+enum {
     LOCAL_NONE,   // unknown
     LOCAL_IF,     // address a local interface listens on
     LOCAL_BIND,   // address explicit bound to
@@ -571,8 +566,8 @@ enum
     LOCAL_MAX
 };
 
-bool IsPeerAddrLocalGood(CNode *pnode);
-void AdvertiseLocal(CNode *pnode);
+bool IsPeerAddrLocalGood(CNode* pnode);
+void AdvertiseLocal(CNode* pnode);
 
 /**
  * Mark a network as reachable or unreachable (no automatic connects to it)
@@ -589,9 +584,8 @@ bool AddLocal(const CNetAddr& addr, int nScore = LOCAL_NONE);
 void RemoveLocal(const CService& addr);
 bool SeenLocal(const CService& addr);
 bool IsLocal(const CService& addr);
-bool GetLocal(CService &addr, const CNetAddr *paddrPeer = nullptr);
-CAddress GetLocalAddress(const CNetAddr *paddrPeer, ServiceFlags nLocalServices);
-
+bool GetLocal(CService& addr, const CNetAddr* paddrPeer = nullptr);
+CAddress GetLocalAddress(const CNetAddr* paddrPeer, ServiceFlags nLocalServices);
 
 extern bool fDiscover;
 extern bool fListen;
@@ -646,21 +640,20 @@ public:
     uint32_t m_mapped_as;
 };
 
-
-
 /** Transport protocol agnostic message container.
  * Ideally it should only contain receive time, payload,
  * command and size.
  */
-class CNetMessage {
+class CNetMessage
+{
 public:
-    CDataStream m_recv;                  // received message data
-    int64_t m_time = 0;                  // time (in microseconds) of message receipt.
+    CDataStream m_recv; // received message data
+    int64_t m_time = 0; // time (in microseconds) of message receipt.
     bool m_valid_netmagic = false;
     bool m_valid_header = false;
     bool m_valid_checksum = false;
-    uint32_t m_message_size = 0;         // size of the payload
-    uint32_t m_raw_message_size = 0;     // used wire size of the message (including header/checksum)
+    uint32_t m_message_size = 0;     // size of the payload
+    uint32_t m_raw_message_size = 0; // used wire size of the message (including header/checksum)
     std::string m_command;
 
     CNetMessage(CDataStream&& recv_in) : m_recv(std::move(recv_in)) {}
@@ -675,14 +668,15 @@ public:
  * network receive buffer. It can deserialize the network buffer into a
  * transport protocol agnostic CNetMessage (command & payload)
  */
-class TransportDeserializer {
+class TransportDeserializer
+{
 public:
     // returns true if the current deserialization is complete
     virtual bool Complete() const = 0;
     // set the serialization context version
     virtual void SetVersion(int version) = 0;
     // read and deserialize data
-    virtual int Read(const char *data, unsigned int bytes) = 0;
+    virtual int Read(const char* data, unsigned int bytes) = 0;
     // decomposes a message from the context
     virtual CNetMessage GetMessage(const CMessageHeader::MessageStartChars& message_start, int64_t time) = 0;
     virtual ~TransportDeserializer() {}
@@ -693,18 +687,19 @@ class V1TransportDeserializer final : public TransportDeserializer
 private:
     mutable CHash256 hasher;
     mutable uint256 data_hash;
-    bool in_data;                   // parsing header (false) or data (true)
-    CDataStream hdrbuf;             // partially received header
-    CMessageHeader hdr;             // complete header
-    CDataStream vRecv;              // received message data
+    bool in_data;       // parsing header (false) or data (true)
+    CDataStream hdrbuf; // partially received header
+    CMessageHeader hdr; // complete header
+    CDataStream vRecv;  // received message data
     unsigned int nHdrPos;
     unsigned int nDataPos;
 
     const uint256& GetMessageHash() const;
-    int readHeader(const char *pch, unsigned int nBytes);
-    int readData(const char *pch, unsigned int nBytes);
+    int readHeader(const char* pch, unsigned int nBytes);
+    int readData(const char* pch, unsigned int nBytes);
 
-    void Reset() {
+    void Reset()
+    {
         vRecv.clear();
         hdrbuf.clear();
         hdrbuf.resize(24);
@@ -716,8 +711,8 @@ private:
     }
 
 public:
-
-    V1TransportDeserializer(const CMessageHeader::MessageStartChars& pchMessageStartIn, int nTypeIn, int nVersionIn) : hdrbuf(nTypeIn, nVersionIn), hdr(pchMessageStartIn), vRecv(nTypeIn, nVersionIn) {
+    V1TransportDeserializer(const CMessageHeader::MessageStartChars& pchMessageStartIn, int nTypeIn, int nVersionIn) : hdrbuf(nTypeIn, nVersionIn), hdr(pchMessageStartIn), vRecv(nTypeIn, nVersionIn)
+    {
         Reset();
     }
 
@@ -732,7 +727,8 @@ public:
         hdrbuf.SetVersion(nVersionIn);
         vRecv.SetVersion(nVersionIn);
     }
-    int Read(const char *pch, unsigned int nBytes) override {
+    int Read(const char* pch, unsigned int nBytes) override
+    {
         int ret = in_data ? readData(pch, nBytes) : readHeader(pch, nBytes);
         if (ret < 0) Reset();
         return ret;
@@ -742,14 +738,16 @@ public:
 
 /** The TransportSerializer prepares messages for the network transport
  */
-class TransportSerializer {
+class TransportSerializer
+{
 public:
     // prepare message for transport (header construction, error-correction computation, payload encryption, etc.)
     virtual void prepareForTransport(CSerializedNetMsg& msg, std::vector<unsigned char>& header) = 0;
     virtual ~TransportSerializer() {}
 };
 
-class V1TransportSerializer  : public TransportSerializer {
+class V1TransportSerializer : public TransportSerializer
+{
 public:
     void prepareForTransport(CSerializedNetMsg& msg, std::vector<unsigned char>& header) override;
 };
@@ -767,7 +765,7 @@ public:
     // socket
     std::atomic<ServiceFlags> nServices{NODE_NONE};
     SOCKET hSocket GUARDED_BY(cs_hSocket);
-    size_t nSendSize{0}; // total size of all vSendMsg entries
+    size_t nSendSize{0};   // total size of all vSendMsg entries
     size_t nSendOffset{0}; // offset inside the first vSendMsg already sent
     uint64_t nSendBytes GUARDED_BY(cs_vSend){0};
     std::deque<std::vector<unsigned char>> vSendMsg GUARDED_BY(cs_vSend);
@@ -803,7 +801,8 @@ public:
      */
     std::string cleanSubVer GUARDED_BY(cs_SubVer){};
     bool m_prefer_evict{false}; // This peer is preferred for eviction.
-    bool HasPermission(NetPermissionFlags permission) const {
+    bool HasPermission(NetPermissionFlags permission) const
+    {
         return NetPermissions::HasFlag(m_permissionFlags, permission);
     }
     // This boolean is unusued in actual processing, only present for backward compatibility at RPC/QT level
@@ -811,7 +810,7 @@ public:
     bool fFeeler{false}; // If true this node is being used as a short lived feeler.
     bool fOneShot{false};
     bool m_manual_connection{false};
-    bool fClient{false}; // set by version message
+    bool fClient{false};        // set by version message
     bool m_limited_node{false}; //after BIP159, set by version message
     const bool fInbound;
     std::atomic_bool fSuccessfullyConnected{false};
@@ -841,11 +840,11 @@ public:
 
     // flood relay
     std::vector<CAddress> vAddrToSend;
-    CRollingBloomFilter addrKnown;
+    const std::unique_ptr<CRollingBloomFilter> m_addr_known;
     bool fGetAddr{false};
     std::set<uint256> setKnown;
-    int64_t nNextAddrSend GUARDED_BY(cs_sendProcessing){0};
-    int64_t nNextLocalAddrSend GUARDED_BY(cs_sendProcessing){0};
+    std::chrono::microseconds m_next_addr_send GUARDED_BY(cs_sendProcessing){0};
+    std::chrono::microseconds m_next_local_addr_send GUARDED_BY(cs_sendProcessing){0};
 
     //! getdata flood protection
     int getDataInPastMinute;
@@ -857,7 +856,7 @@ public:
     // They are sorted by the mempool before relay, so the order is not important.
     std::set<uint256> setInventoryTxToSend;
     std::vector<uint256> vInventoryBlockToSend GUARDED_BY(cs_inventory);
-        // Minimum fee rate with which to filter inv's to this node
+    // Minimum fee rate with which to filter inv's to this node
     std::vector<CInv> vInventoryOtherToSend GUARDED_BY(cs_inventory);
     RecursiveMutex cs_inventory;
     int64_t nNextInvSend{0};
@@ -958,8 +957,8 @@ private:
 
     const int nMyStartingHeight;
     int nSendVersion{0};
-    NetPermissionFlags m_permissionFlags{ PF_NONE };
-    std::list<CNetMessage> vRecvMsg;  // Used only by SocketHandler thread
+    NetPermissionFlags m_permissionFlags{PF_NONE};
+    std::list<CNetMessage> vRecvMsg; // Used only by SocketHandler thread
 
     mutable RecursiveMutex cs_addrName;
     std::string addrName GUARDED_BY(cs_addrName);
@@ -967,17 +966,20 @@ private:
     // Our address, as reported by the peer
     CService addrLocal GUARDED_BY(cs_addrLocal);
     mutable RecursiveMutex cs_addrLocal;
-public:
 
-    NodeId GetId() const {
+public:
+    NodeId GetId() const
+    {
         return id;
     }
 
-    uint64_t GetLocalNonce() const {
+    uint64_t GetLocalNonce() const
+    {
         return nLocalHostNonce;
     }
 
-    int GetMyStartingHeight() const {
+    int GetMyStartingHeight() const
+    {
         return nMyStartingHeight;
     }
 
@@ -987,7 +989,7 @@ public:
         return nRefCount;
     }
 
-    bool ReceiveMsgBytes(const char *pch, unsigned int nBytes, bool& complete);
+    bool ReceiveMsgBytes(const char* pch, unsigned int nBytes, bool& complete);
 
     void SetRecvVersion(int nVersionIn)
     {
@@ -1015,19 +1017,17 @@ public:
         nRefCount--;
     }
 
-
-
     void AddAddressKnown(const CAddress& _addr)
     {
-        addrKnown.insert(_addr.GetKey());
+        m_addr_known->insert(_addr.GetKey());
     }
 
-    void PushAddress(const CAddress& _addr, FastRandomContext &insecure_rand)
+    void PushAddress(const CAddress& _addr, FastRandomContext& insecure_rand)
     {
         // Known checking here is only to save space from duplicates.
         // SendMessages will filter it again for knowns that were added
         // after addresses were pushed.
-        if (_addr.IsValid() && !addrKnown.contains(_addr.GetKey())) {
+        if (_addr.IsValid() && !m_addr_known->contains(_addr.GetKey())) {
             if (vAddrToSend.size() >= MAX_ADDR_TO_SEND) {
                 vAddrToSend[insecure_rand.randrange(vAddrToSend.size())] = _addr;
             } else {
@@ -1035,7 +1035,6 @@ public:
             }
         }
     }
-
 
     void AddInventoryKnown(const CInv& inv)
     {
@@ -1061,7 +1060,7 @@ public:
         }
     }
 
-    void PushBlockHash(const uint256 &hash)
+    void PushBlockHash(const uint256& hash)
     {
         LOCK(cs_inventory);
         vBlockHashesToAnnounce.push_back(hash);
@@ -1069,7 +1068,7 @@ public:
 
     void CloseSocketDisconnect();
 
-    void copyStats(CNodeStats &stats, const std::vector<bool> &m_asmap);
+    void copyStats(CNodeStats& stats, const std::vector<bool>& m_asmap);
 
     ServiceFlags GetLocalServices() const
     {
