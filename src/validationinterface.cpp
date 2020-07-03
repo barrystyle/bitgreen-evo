@@ -251,6 +251,30 @@ void CMainSignals::NotifyChainLock(const CBlockIndex* pindexChainLock)
     m_internals->NotifyChainLock(pindexChainLock);
 }
 
+void CMainSignals::NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff)
+{
+    m_internals->NotifyMasternodeListChanged(undo, oldMNList, diff);
+}
+
+void CMainSignals::SyncTransaction(const CTransaction &tx, const CBlockIndex *pindex, int posInBlock)
+{
+    m_internals->SyncTransaction(tx, pindex, posInBlock);
+}
+
+void CMainSignals::AcceptedBlockHeader(const CBlockIndex *pindexNew)
+{
+    m_internals->AcceptedBlockHeader(pindexNew);
+}
+
+void CMainSignals::NotifyTransactionLock(const CTransaction &tx)
+{
+    m_internals->NotifyTransactionLock(tx);
+}
+void CMainSignals::NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx)
+{
+    m_internals->NotifyInstantSendDoubleSpendAttempt(currentTx, previousTx);
+}
+
 void CMainSignals::NotifyGovernanceVote(const CGovernanceVote &vote)
 {
     m_internals->NotifyGovernanceVote(vote);

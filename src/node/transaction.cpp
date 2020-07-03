@@ -77,9 +77,10 @@ TransactionError BroadcastTransaction(NodeContext& node, const CTransactionRef t
         promise.get_future().wait();
     }
 
-    if (relay) {
-        RelayTransaction(hashTx, *node.connman);
-    }
+    CInv inv(MSG_TX, hashTx);
+    g_connman->ForEachNode([&inv](CNode* pnode) {
+        pnode->PushInventory(inv);
+    });
 
     return TransactionError::OK;
 }

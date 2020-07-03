@@ -52,6 +52,7 @@
 #include <util/strencodings.h>
 #include <util/system.h>
 #include <util/translation.h>
+#include <util/validation.h>
 #include <validationinterface.h>
 #include <warnings.h>
 
