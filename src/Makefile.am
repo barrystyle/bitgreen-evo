@@ -633,6 +633,7 @@ libbitcoin_util_a_SOURCES = \
   util/string.cpp \
   util/time.cpp \
   util/url.cpp \
+  util/validation.cpp \
   $(BITCOIN_CORE_H)
 
 if GLIBC_BACK_COMPAT

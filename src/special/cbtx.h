@@ -44,9 +44,9 @@ public:
     void ToJson(UniValue& obj) const;
 };
 
-bool CheckCbTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state);
-bool CheckCbTxMerkleRoots(const CBlock& block, const CBlockIndex* pindex, CValidationState& state);
-bool CalcCbTxMerkleRootMNList(const CBlock& block, const CBlockIndex* pindexPrev, uint256& merkleRootRet, CValidationState& state);
-bool CalcCbTxMerkleRootQuorums(const CBlock& block, const CBlockIndex* pindexPrev, uint256& merkleRootRet, CValidationState& state);
+bool CheckCbTx(const CTransaction& tx, const CBlockIndex* pindexPrev, BlockValidationState& state);
+bool CheckCbTxMerkleRoots(const CBlock& block, const CBlockIndex* pindex, BlockValidationState& state);
+bool CalcCbTxMerkleRootMNList(const CBlock& block, const CBlockIndex* pindexPrev, uint256& merkleRootRet, BlockValidationState& state);
+bool CalcCbTxMerkleRootQuorums(const CBlock& block, const CBlockIndex* pindexPrev, uint256& merkleRootRet, BlockValidationState& state);
 
 #endif //BITGREEN_SPECIAL_CBTX_H

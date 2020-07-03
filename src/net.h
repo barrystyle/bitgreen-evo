@@ -11,6 +11,7 @@
 #include <amount.h>
 #include <bloom.h>
 #include <compat.h>
+#include <consensus/params.h>
 #include <crypto/siphash.h>
 #include <hash.h>
 #include <limitedmap.h>
@@ -200,10 +201,13 @@ public:
     bool GetNetworkActive() const { return fNetworkActive; };
     bool GetUseAddrmanOutgoing() const { return m_use_addrman_outgoing; };
     void SetNetworkActive(bool active);
-    void OpenNetworkConnection(const CAddress& addrConnect, bool fCountFailure, CSemaphoreGrant *grantOutbound = nullptr, const char *strDest = nullptr, bool fOneShot = false, bool fFeeler = false, bool manual_connection = false, bool block_relay_only = false);
+    void OpenNetworkConnection(const CAddress& addrConnect, bool fCountFailure, CSemaphoreGrant *grantOutbound = nullptr, const char *strDest = nullptr, bool fOneShot = false, bool fFeeler = false, bool manual_connection = false, bool fConnectToMasternode = false);
+    void OpenMasternodeConnection(const CAddress& addrConnect);
     bool CheckIncomingNonce(uint64_t nonce);
 
     bool ForNode(NodeId id, std::function<bool(CNode* pnode)> func);
+    bool ForNode(const CService& addr, std::function<bool(CNode* pnode)> func);
+    bool IsMasternodeOrDisconnectRequested(const CService& addr);
 
     void PushMessage(CNode* pnode, CSerializedNetMsg&& msg);
 
@@ -249,6 +253,16 @@ public:
         post();
     };
 
+    std::vector<CNode*> CopyNodeVector(std::function<bool(const CNode* pnode)> cond);
+    void ReleaseNodeVector(const std::vector<CNode*>& vecNodes);
+
+    struct CFullyConnectedOnly {
+        bool operator() (const CNode* pnode) const {
+            return NodeFullyConnected(pnode);
+        }
+    };
+
+    constexpr static const CFullyConnectedOnly FullyConnectedOnly{};
     // Addrman functions
     size_t GetAddressCount() const;
     void SetServices(const CService &addr, ServiceFlags nServices);
@@ -328,7 +342,22 @@ public:
     */
     int64_t PoissonNextSendInbound(int64_t now, int average_interval_seconds);
 
-    void SetAsmap(std::vector<bool> asmap) { addrman.m_asmap = std::move(asmap); }
+    bool AddMasternodeQuorumNodes(Consensus::LLMQType llmqType, const uint256& quorumHash, const std::set<uint256>& proTxHashes);
+    bool HasMasternodeQuorumNodes(Consensus::LLMQType llmqType, const uint256& quorumHash);
+    std::set<uint256> GetMasternodeQuorums(Consensus::LLMQType llmqType);
+    // also returns QWATCH nodes
+    std::set<NodeId> GetMasternodeQuorumNodes(Consensus::LLMQType llmqType, const uint256& quorumHash) const;
+    void RemoveMasternodeQuorumNodes(Consensus::LLMQType llmqType, const uint256& quorumHash);
+    bool IsMasternodeQuorumNode(const CNode* pnode);
+
+    //! Relay message only to minProtoVersion peers.
+    void RelayInv(CInv &inv, const int minProtoVersion = MIN_PEER_PROTO_VERSION);
+
+    //! Relay message based to minProtoVersion peers filtered by relatedTx.
+    void RelayInvFiltered(CInv &inv, const CTransaction &relatedTx, const int minProtoVersion = MIN_PEER_PROTO_VERSION);
+
+    //! Relay message based to minProtoVersion peers filtered by relatedTxHash.
+    void RelayInvFiltered(CInv &inv, const uint256 &relatedTxHash, const int minProtoVersion = MIN_PEER_PROTO_VERSION);
 
 private:
     struct ListenSocket {
@@ -357,6 +386,7 @@ private:
     void SocketHandler();
     void ThreadSocketHandler();
     void ThreadDNSAddressSeed();
+    void ThreadOpenMasternodeConnections();
 
     uint64_t CalculateKeyedNetGroup(const CAddress& ad) const;
 
@@ -431,10 +461,16 @@ private:
      *
      * \sa CNode::nLocalServices
      */
+    std::vector<CService> vPendingMasternodes;
+    std::map<std::pair<Consensus::LLMQType, uint256>, std::set<uint256>> masternodeQuorumNodes GUARDED_BY(cs_vPendingMasternodes);
+    mutable RecursiveMutex cs_vPendingMasternodes;
+
+    /** Services this instance offers */
     ServiceFlags nLocalServices;
 
     std::unique_ptr<CSemaphore> semOutbound;
     std::unique_ptr<CSemaphore> semAddnode;
+    std::unique_ptr<CSemaphore> semMasternodeOutbound;
     int nMaxConnections;
 
     // How many full-relay (tx, block, addr) outbound peers we want
@@ -469,6 +505,7 @@ private:
     std::thread threadSocketHandler;
     std::thread threadOpenAddedConnections;
     std::thread threadOpenConnections;
+    std::thread threadOpenMasternodeConnections;
     std::thread threadMessageHandler;
 
     /** flag for deciding to connect to an extra outbound peer,
@@ -481,6 +518,8 @@ private:
     friend struct CConnmanTest;
     friend struct ConnmanTestMsg;
 };
+extern std::unique_ptr<CConnman> g_connman;
+extern std::unique_ptr<BanMan> g_banman;
 void Discover();
 void StartMapPort();
 void InterruptMapPort();
@@ -750,6 +789,8 @@ public:
     std::atomic<int64_t> nLastRecv{0};
     const int64_t nTimeConnected;
     std::atomic<int64_t> nTimeOffset{0};
+    std::atomic<int64_t> nTimeFirstMessageReceived{0};
+    std::atomic<bool> fFirstMessageIsMNAUTH;
     // Address of this peer
     const CAddress addr;
     // Bind address of our side of the connection
@@ -777,8 +818,13 @@ public:
     // Setting fDisconnect to true will cause the node to be disconnected the
     // next time DisconnectNodes() runs
     std::atomic_bool fDisconnect{false};
+    bool fRelayTxes GUARDED_BY(cs_filter){false};
     bool fSentAddr{false};
+    bool fMasternode{false};
     CSemaphoreGrant grantOutbound;
+    CSemaphoreGrant grantMasternodeOutbound;
+    mutable RecursiveMutex cs_filter;
+    std::unique_ptr<CBloomFilter> pfilter PT_GUARDED_BY(cs_filter);
     std::atomic<int> nRefCount{0};
 
     const uint64_t nKeyedNetGroup;
@@ -795,18 +841,26 @@ public:
 
     // flood relay
     std::vector<CAddress> vAddrToSend;
-    const std::unique_ptr<CRollingBloomFilter> m_addr_known;
+    CRollingBloomFilter addrKnown;
     bool fGetAddr{false};
-    std::chrono::microseconds m_next_addr_send GUARDED_BY(cs_sendProcessing){0};
-    std::chrono::microseconds m_next_local_addr_send GUARDED_BY(cs_sendProcessing){0};
+    std::set<uint256> setKnown;
+    int64_t nNextAddrSend GUARDED_BY(cs_sendProcessing){0};
+    int64_t nNextLocalAddrSend GUARDED_BY(cs_sendProcessing){0};
 
-    bool IsAddrRelayPeer() const { return m_addr_known != nullptr; }
+    //! getdata flood protection
+    int getDataInPastMinute;
+    int64_t getDataTimer;
 
-    // List of block ids we still have announce.
-    // There is no final sorting before sending, as they are always sent immediately
-    // and in the order requested.
+    // inventory based relay
+    CRollingBloomFilter filterInventoryKnown GUARDED_BY(cs_inventory);
+    // Set of transaction ids we still have to announce.
+    // They are sorted by the mempool before relay, so the order is not important.
+    std::set<uint256> setInventoryTxToSend;
     std::vector<uint256> vInventoryBlockToSend GUARDED_BY(cs_inventory);
+        // Minimum fee rate with which to filter inv's to this node
+    std::vector<CInv> vInventoryOtherToSend GUARDED_BY(cs_inventory);
     RecursiveMutex cs_inventory;
+    int64_t nNextInvSend{0};
 
     struct TxRelay {
         TxRelay() { pfilter = MakeUnique<CBloomFilter>(); }
@@ -836,11 +890,13 @@ public:
         int64_t nextSendTimeFeeFilter{0};
     };
 
-    // m_tx_relay == nullptr if we're not relaying transactions with this peer
     std::unique_ptr<TxRelay> m_tx_relay;
-
-    // Used for headers announcements - unfiltered blocks to relay
     std::vector<uint256> vBlockHashesToAnnounce GUARDED_BY(cs_inventory);
+    // Used for BIP35 mempool sending
+    bool fSendMempool GUARDED_BY(cs_inventory){false};
+
+    // Last time a "MEMPOOL" request was serviced.
+    std::atomic<int64_t> timeLastMempoolReq{0};
 
     // Block and TXN accept times
     std::atomic<int64_t> nLastBlockTime{0};
@@ -857,10 +913,24 @@ public:
     std::atomic<int64_t> nMinPingUsecTime{std::numeric_limits<int64_t>::max()};
     // Whether a ping is requested.
     std::atomic<bool> fPingQueued{false};
-
+    // announce/send plain recovered sigs (true for full nodes)
+    std::atomic<bool> fSendRecSigs{false};
+    // If true, will send all quorum related messages, even if its not a member of our quorums
+    std::atomic<bool> qwatch{false};
+    // Minimum fee rate with which to filter inv's to this node
+    CAmount minFeeFilter GUARDED_BY(cs_feeFilter){0};
+    RecursiveMutex cs_feeFilter;
+    CAmount lastSentFeeFilter{0};
+    int64_t nextSendTimeFeeFilter{0};
     std::set<uint256> orphan_work_set;
 
-    CNode(NodeId id, ServiceFlags nLocalServicesIn, int nMyStartingHeightIn, SOCKET hSocketIn, const CAddress &addrIn, uint64_t nKeyedNetGroupIn, uint64_t nLocalHostNonceIn, const CAddress &addrBindIn, const std::string &addrNameIn = "", bool fInboundIn = false, bool block_relay_only = false);
+    mutable RecursiveMutex cs_mnauth;
+    uint256 sentMNAuthChallenge;
+    uint256 receivedMNAuthChallenge;
+    uint256 verifiedProRegTxHash;
+    uint256 verifiedPubKeyHash;
+
+    CNode(NodeId idIn, ServiceFlags nLocalServicesIn, int nMyStartingHeightIn, SOCKET hSocketIn, const CAddress& addrIn, uint64_t nKeyedNetGroupIn, uint64_t nLocalHostNonceIn, const CAddress& addrBindIn, const std::string& addrNameIn, bool fInboundIn, bool block_relay_only = false);
     ~CNode();
     CNode(const CNode&) = delete;
     CNode& operator=(const CNode&) = delete;
@@ -949,8 +1019,7 @@ public:
 
     void AddAddressKnown(const CAddress& _addr)
     {
-        assert(m_addr_known);
-        m_addr_known->insert(_addr.GetKey());
+        addrKnown.insert(_addr.GetKey());
     }
 
     void PushAddress(const CAddress& _addr, FastRandomContext &insecure_rand)
@@ -958,8 +1027,7 @@ public:
         // Known checking here is only to save space from duplicates.
         // SendMessages will filter it again for knowns that were added
         // after addresses were pushed.
-        assert(m_addr_known);
-        if (_addr.IsValid() && !m_addr_known->contains(_addr.GetKey())) {
+        if (_addr.IsValid() && !addrKnown.contains(_addr.GetKey())) {
             if (vAddrToSend.size() >= MAX_ADDR_TO_SEND) {
                 vAddrToSend[insecure_rand.randrange(vAddrToSend.size())] = _addr;
             } else {
@@ -971,22 +1039,25 @@ public:
 
     void AddInventoryKnown(const CInv& inv)
     {
-        if (m_tx_relay != nullptr) {
-            LOCK(m_tx_relay->cs_tx_inventory);
-            m_tx_relay->filterInventoryKnown.insert(inv.hash);
+        {
+            LOCK(cs_inventory);
+            filterInventoryKnown.insert(inv.hash);
         }
     }
 
     void PushInventory(const CInv& inv)
     {
-        if (inv.type == MSG_TX && m_tx_relay != nullptr) {
-            LOCK(m_tx_relay->cs_tx_inventory);
-            if (!m_tx_relay->filterInventoryKnown.contains(inv.hash)) {
-                m_tx_relay->setInventoryTxToSend.insert(inv.hash);
+        LOCK(cs_inventory);
+        if (inv.type == MSG_TX) {
+            if (!filterInventoryKnown.contains(inv.hash)) {
+                setInventoryTxToSend.insert(inv.hash);
             }
         } else if (inv.type == MSG_BLOCK) {
-            LOCK(cs_inventory);
             vInventoryBlockToSend.push_back(inv.hash);
+        } else {
+            if (!filterInventoryKnown.contains(inv.hash)) {
+                vInventoryOtherToSend.push_back(inv);
+            }
         }
     }
 

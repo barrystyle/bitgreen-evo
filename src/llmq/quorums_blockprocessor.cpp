@@ -117,7 +117,7 @@ void CQuorumBlockProcessor::ProcessMessage(CNode* pfrom, const std::string& strC
     }
 }
 
-bool CQuorumBlockProcessor::ProcessBlock(const CBlock& block, const CBlockIndex* pindex, CValidationState& state)
+bool CQuorumBlockProcessor::ProcessBlock(const CBlock& block, const CBlockIndex* pindex, BlockValidationState& state)
 {
     AssertLockHeld(cs_main);
 
@@ -143,13 +143,13 @@ bool CQuorumBlockProcessor::ProcessBlock(const CBlock& block, const CBlockIndex*
 
         if (hasCommitmentInNewBlock && !isCommitmentRequired) {
             // If we're either not in the mining phase or a non-null commitment was mined already, reject the block
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-not-allowed");
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-not-allowed");
         }
 
         if (!hasCommitmentInNewBlock && isCommitmentRequired) {
             // If no non-null commitment was mined for the mining phase yet and the new block does not include
             // a (possibly null) commitment, the block should be rejected.
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-missing");
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-missing");
         }
     }
 
@@ -175,40 +175,40 @@ static std::tuple<std::string, uint8_t, uint32_t> BuildInversedHeightKey(Consens
     return std::make_tuple(DB_MINED_COMMITMENT_BY_INVERSED_HEIGHT, (uint8_t)llmqType, htobe32(std::numeric_limits<uint32_t>::max() - nMinedHeight));
 }
 
-bool CQuorumBlockProcessor::ProcessCommitment(int nHeight, const uint256& blockHash, const CFinalCommitment& qc, CValidationState& state)
+bool CQuorumBlockProcessor::ProcessCommitment(int nHeight, const uint256& blockHash, const CFinalCommitment& qc, BlockValidationState& state)
 {
     auto& params = Params().GetConsensus().llmqs.at((Consensus::LLMQType)qc.llmqType);
 
     uint256 quorumHash = GetQuorumBlockHash((Consensus::LLMQType)qc.llmqType, nHeight);
     if (quorumHash.IsNull()) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-block");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-block");
     }
     if (quorumHash != qc.quorumHash) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-block");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-block");
     }
 
     if (qc.IsNull()) {
         if (!qc.VerifyNull()) {
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-invalid-null");
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-invalid-null");
         }
         return true;
     }
 
     if (HasMinedCommitment(params.type, quorumHash)) {
         // should not happen as it's already handled in ProcessBlock
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-dup");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-dup");
     }
 
     if (!IsMiningPhase(params.type, nHeight)) {
         // should not happen as it's already handled in ProcessBlock
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-height");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-height");
     }
 
     auto quorumIndex = ::BlockIndex().at(qc.quorumHash);
     auto members = CLLMQUtils::GetAllQuorumMembers(params.type, quorumIndex);
 
     if (!qc.Verify(members, true)) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-invalid");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-invalid");
     }
 
     // Store commitment in DB
@@ -231,7 +231,7 @@ bool CQuorumBlockProcessor::UndoBlock(const CBlock& block, const CBlockIndex* pi
     AssertLockHeld(cs_main);
 
     std::map<Consensus::LLMQType, CFinalCommitment> qcs;
-    CValidationState dummy;
+    BlockValidationState dummy;
     if (!GetCommitmentsFromBlock(block, pindex, qcs, dummy)) {
         return false;
     }
@@ -258,7 +258,7 @@ bool CQuorumBlockProcessor::UndoBlock(const CBlock& block, const CBlockIndex* pi
     return true;
 }
 
-bool CQuorumBlockProcessor::GetCommitmentsFromBlock(const CBlock& block, const CBlockIndex* pindex, std::map<Consensus::LLMQType, CFinalCommitment>& ret, CValidationState& state)
+bool CQuorumBlockProcessor::GetCommitmentsFromBlock(const CBlock& block, const CBlockIndex* pindex, std::map<Consensus::LLMQType, CFinalCommitment>& ret, BlockValidationState& state)
 {
     AssertLockHeld(cs_main);
 
@@ -269,12 +269,12 @@ bool CQuorumBlockProcessor::GetCommitmentsFromBlock(const CBlock& block, const C
             CFinalCommitmentTxPayload qc;
             if (!GetTxPayload(*tx, qc)) {
                 // should not happen as it was verified before processing the block
-                return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-tx-payload");
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-tx-payload");
             }
 
             // only allow one commitment per type and per block
             if (ret.count((Consensus::LLMQType)qc.commitment.llmqType)) {
-                return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-dup");
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-dup");
             }
 
             ret.emplace((Consensus::LLMQType)qc.commitment.llmqType, std::move(qc.commitment));
@@ -282,7 +282,7 @@ bool CQuorumBlockProcessor::GetCommitmentsFromBlock(const CBlock& block, const C
     }
 
     if (pindex->nHeight < Params().GetConsensus().nLLMQActivationHeight && !ret.empty())
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-premature");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-premature");
 
     return true;
 }

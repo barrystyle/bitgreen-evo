@@ -16,7 +16,7 @@
 #include <univalue.h>
 #include <validation.h>
 
-bool CheckCbTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckCbTx(const CTransaction& tx, const CBlockIndex* pindexPrev, BlockValidationState& state)
 {
     if (tx.nVersion < 2)
         return true;
@@ -41,7 +41,7 @@ bool CheckCbTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidatio
 }
 
 // This can only be done after the block has been fully processed, as otherwise we won't have the finished MN list
-bool CheckCbTxMerkleRoots(const CBlock& block, const CBlockIndex* pindex, CValidationState& state)
+bool CheckCbTxMerkleRoots(const CBlock& block, const CBlockIndex* pindex, BlockValidationState& state)
 {
     if (block.vtx[0]->nType != TRANSACTION_COINBASE)
         return true;
@@ -81,7 +81,7 @@ bool CheckCbTxMerkleRoots(const CBlock& block, const CBlockIndex* pindex, CValid
     return true;
 }
 
-bool CalcCbTxMerkleRootMNList(const CBlock& block, const CBlockIndex* pindexPrev, uint256& merkleRootRet, CValidationState& state)
+bool CalcCbTxMerkleRootMNList(const CBlock& block, const CBlockIndex* pindexPrev, uint256& merkleRootRet, BlockValidationState& state)
 {
     LOCK(deterministicMNManager->cs);
 
@@ -125,7 +125,7 @@ bool CalcCbTxMerkleRootMNList(const CBlock& block, const CBlockIndex* pindexPrev
     return !mutated;
 }
 
-bool CalcCbTxMerkleRootQuorums(const CBlock& block, const CBlockIndex* pindexPrev, uint256& merkleRootRet, CValidationState& state)
+bool CalcCbTxMerkleRootQuorums(const CBlock& block, const CBlockIndex* pindexPrev, uint256& merkleRootRet, BlockValidationState& state)
 {
     static int64_t nTimeMinedAndActive = 0;
     static int64_t nTimeMined = 0;

@@ -151,6 +151,9 @@ private:
     const CChainParams& chainparams;
     const CTxMemPool& m_mempool;
 
+    // Stake info
+    int64_t nLastCoinStakeSearchTime = 0;
+
 public:
     struct Options {
         Options();

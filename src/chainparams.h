@@ -1,10 +1,10 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Bitcoin Core developers
+// Copyright (c) 2009-2018 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_CHAINPARAMS_H
-#define BITCOIN_CHAINPARAMS_H
+#ifndef BITGREEN_CHAINPARAMS_H
+#define BITGREEN_CHAINPARAMS_H
 
 #include <chainparamsbase.h>
 #include <consensus/params.h>
@@ -39,7 +39,7 @@ struct ChainTxData {
 
 /**
  * CChainParams defines various tweakable parameters of a given instance of the
- * Bitcoin system. There are three: the main network on which people trade goods
+ * BitGreen system. There are three: the main network on which people trade goods
  * and services, the public test network which gets reset from time to time and
  * a regression test mode which is intended for private networks only. It has
  * minimal difficulty to ensure that blocks can be found instantly.
@@ -68,8 +68,6 @@ public:
     bool RequireStandard() const { return fRequireStandard; }
     /** If this chain is exclusively used for testing */
     bool IsTestChain() const { return m_is_test_chain; }
-    /** If this chain allows time to be mocked */
-    bool IsMockableChain() const { return m_is_mockable_chain; }
     uint64_t PruneAfterHeight() const { return nPruneAfterHeight; }
     /** Minimum free space (in GB) needed for data directory */
     uint64_t AssumedBlockchainSize() const { return m_assumed_blockchain_size; }
@@ -77,7 +75,7 @@ public:
     uint64_t AssumedChainStateSize() const { return m_assumed_chain_state_size; }
     /** Whether it is possible to mine blocks on demand (no retargeting) */
     bool MineBlocksOnDemand() const { return consensus.fPowNoRetargeting; }
-    /** Return the network string */
+    /** Return the BIP70 network string (main, test or regtest) */
     std::string NetworkIDString() const { return strNetworkID; }
     /** Return the list of hostnames to look up for DNS seeds */
     const std::vector<std::string>& DNSSeeds() const { return vSeeds; }
@@ -86,6 +84,15 @@ public:
     const std::vector<SeedSpec6>& FixedSeeds() const { return vFixedSeeds; }
     const CCheckpointData& Checkpoints() const { return checkpointData; }
     const ChainTxData& TxData() const { return chainTxData; }
+    /** Make miner wait to have peers to avoid wasting work */
+    bool MiningRequiresPeers() const { return fMiningRequiresPeers; }
+    /** Allow nodes with the same address and multiple ports */
+    bool AllowMultiplePorts() const { return fAllowMultiplePorts; }
+    /** Expire time for fulfilled requests */
+    int FulfilledRequestExpireTime() const { return nFulfilledRequestExpireTime; }
+    const std::vector<std::string>& SporkAddresses() const { return vSporkAddresses; }
+    int MinSporkKeys() const { return nMinSporkKeys; }
+
 protected:
     CChainParams() {}
 
@@ -104,9 +111,13 @@ protected:
     bool fDefaultConsistencyChecks;
     bool fRequireStandard;
     bool m_is_test_chain;
-    bool m_is_mockable_chain;
+    bool fMiningRequiresPeers;
     CCheckpointData checkpointData;
     ChainTxData chainTxData;
+    bool fAllowMultiplePorts;
+    int nFulfilledRequestExpireTime;
+    std::vector<std::string> vSporkAddresses;
+    int nMinSporkKeys;
 };
 
 /**
@@ -123,9 +134,9 @@ std::unique_ptr<const CChainParams> CreateChainParams(const std::string& chain);
 const CChainParams &Params();
 
 /**
- * Sets the params returned by Params() to those for the given chain name.
+ * Sets the params returned by Params() to those for the given BIP70 chain name.
  * @throws std::runtime_error when the chain is not supported.
  */
 void SelectParams(const std::string& chain);
 
-#endif // BITCOIN_CHAINPARAMS_H
+#endif // BITGREEN_CHAINPARAMS_H

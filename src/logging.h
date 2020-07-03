@@ -54,8 +54,16 @@ namespace BCLog {
         COINDB      = (1 << 18),
         QT          = (1 << 19),
         LEVELDB     = (1 << 20),
-        VALIDATION  = (1 << 21),
-        GOBJECT     = (1 << 22), 
+        KERNEL      = (1 << 21),
+        MNSYNC      = (1 << 22),
+        LLMQ        = (1 << 23),
+        LLMQDKG     = (1 << 24),
+        LLMQSIGS    = (1 << 25),
+        CHAINLOCKS  = (1 << 26),
+        MASTERNODE  = (1 << 27),
+        SPORK       = (1 << 28),
+        GOVERNANCE  = (1 << 29),
+        GOBJECT     = (1 << 30),
         ALL         = ~(uint32_t)0,
     };
 

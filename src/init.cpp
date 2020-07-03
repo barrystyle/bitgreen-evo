@@ -20,6 +20,7 @@
 #include <consensus/validation.h>
 #include <flat-database.h>
 #include <fs.h>
+#include <governance/governance.h> //! for CGovernanceManager
 #include <httprpc.h>
 #include <httpserver.h>
 #include <index/blockfilterindex.h>
@@ -58,6 +59,7 @@
 #include <txdb.h>
 #include <txmempool.h>
 #include <ui_interface.h>
+#include <util/init.h>
 #include <util/asmap.h>
 #include <util/moneystr.h>
 #include <util/system.h>
@@ -66,10 +68,9 @@
 #include <util/validation.h>
 #include <validation.h>
 #include <hash.h>
-
-
 #include <validationinterface.h>
 #include <walletinitinterface.h>
+#include <wallet/wallet.h> //! for GetWallets
 
 #include <stdint.h>
 #include <stdio.h>
@@ -99,6 +100,10 @@ static const bool DEFAULT_PROXYRANDOMIZE = true;
 static const bool DEFAULT_REST_ENABLE = false;
 static const bool DEFAULT_STOPAFTERBLOCKIMPORT = false;
 
+std::unique_ptr<CConnman> g_connman;
+std::unique_ptr<PeerLogicValidation> peerLogic;
+std::unique_ptr<BanMan> g_banman;
+
 #ifdef WIN32
 // Win32 LevelDB doesn't use filedescriptors, and the ones used for
 // accessing block files don't count towards the fd_set size limit
@@ -115,11 +120,11 @@ static const char* DEFAULT_ASMAP_FILENAME="ip_asn.map";
 /**
  * The PID file facilities.
  */
-static const char* BITCOIN_PID_FILENAME = "bitcoind.pid";
+static const char* BITGREEN_PID_FILENAME = "bitgreend.pid";
 
 static fs::path GetPidFile()
 {
-    return AbsPathForConfigVal(fs::path(gArgs.GetArg("-pid", BITCOIN_PID_FILENAME)));
+    return AbsPathForConfigVal(fs::path(gArgs.GetArg("-pid", BITGREEN_PID_FILENAME)));
 }
 
 NODISCARD static bool CreatePidFile()
@@ -165,6 +170,7 @@ NODISCARD static bool CreatePidFile()
 static std::unique_ptr<ECCVerifyHandle> globalVerifyHandle;
 
 static boost::thread_group threadGroup;
+static CScheduler scheduler;
 
 void Interrupt(NodeContext& node)
 {
@@ -207,6 +213,11 @@ void Shutdown(NodeContext& node)
     }
     StopMapPort();
     llmq::StopLLMQSystem();
+
+    // fRPCInWarmup should be `false` if we completed the loading sequence
+    // before a shutdown request was received
+    std::string statusmessage;
+    bool fRPCInWarmup = RPCIsInWarmup(&statusmessage);
 
     // Because these depend on each-other, we make sure that neither can be
     // using the other before destroying them.
@@ -446,7 +457,7 @@ void SetupServerArgs()
     gArgs.AddArg("-par=<n>", strprintf("Set the number of script verification threads (%u to %d, 0 = auto, <0 = leave that many cores free, default: %d)",
         -GetNumCores(), MAX_SCRIPTCHECK_THREADS, DEFAULT_SCRIPTCHECK_THREADS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-persistmempool", strprintf("Whether to save the mempool on shutdown and load on restart (default: %u)", DEFAULT_PERSIST_MEMPOOL), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    gArgs.AddArg("-pid=<file>", strprintf("Specify pid file. Relative paths will be prefixed by a net-specific datadir location. (default: %s)", BITCOIN_PID_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    gArgs.AddArg("-pid=<file>", strprintf("Specify pid file. Relative paths will be prefixed by a net-specific datadir location. (default: %s)", BITGREEN_PID_FILENAME), false, OptionsCategory::OPTIONS);
     gArgs.AddArg("-prune=<n>", strprintf("Reduce storage requirements by enabling pruning (deleting) of old blocks. This allows the pruneblockchain RPC to be called to delete specific blocks, and enables automatic pruning of old blocks if a target size in MiB is provided. This mode is incompatible with -txindex and -rescan. "
             "Warning: Reverting this setting requires re-downloading the entire blockchain. "
             "(default: 0 = disable pruning blocks, 1 = allow manual pruning via RPC, >=%u = automatically prune block files to stay under the specified target size in MiB)", MIN_DISK_SPACE_FOR_BLOCK_FILES / 1024 / 1024), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -1534,7 +1545,7 @@ bool AppInitMain(NodeContext& node)
             return false;
         }
         const uint256 asmap_version = SerializeHash(asmap);
-        node.connman->SetAsmap(std::move(asmap));
+        //node.connman->SetAsmap(std::move(asmap));
         LogPrintf("Using asmap version %s for IP bucketing\n", asmap_version.ToString());
     } else {
         LogPrintf("Using /16 prefix for IP bucketing\n");
@@ -1547,6 +1558,10 @@ bool AppInitMain(NodeContext& node)
         RegisterValidationInterface(g_zmq_notification_interface);
     }
 #endif
+
+    g_mn_notification_interface = new CMNNotificationInterface(*g_connman.get());
+    RegisterValidationInterface(g_mn_notification_interface);
+
     uint64_t nMaxOutboundLimit = 0; //unlimited unless -maxuploadtarget is set
     uint64_t nMaxOutboundTimeframe = MAX_UPLOAD_TIMEFRAME;
 
@@ -1579,6 +1594,7 @@ bool AppInitMain(NodeContext& node)
     nTotalCache -= nCoinDBCache;
     nCoinCacheUsage = nTotalCache; // the rest goes to in-memory cache
     int64_t nMempoolSizeMax = gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000;
+    int64_t nSpecialDbCache = 1024 * 1024 * 16; // TODO
     LogPrintf("Cache configuration:\n");
     LogPrintf("* Using %.1f MiB for block index database\n", nBlockTreeDBCache * (1.0 / 1024 / 1024));
     if (gArgs.GetBoolArg("-txindex", DEFAULT_TXINDEX)) {
@@ -1602,11 +1618,9 @@ bool AppInitMain(NodeContext& node)
             const int64_t load_block_index_start_time = GetTimeMillis();
             bool is_coinsview_empty;
             try {
-                LOCK(cs_main);
                 // This statement makes ::ChainstateActive() usable.
                 g_chainstate = MakeUnique<CChainState>();
                 UnloadBlockIndex();
-
                 // new CBlockTreeDB tries to delete the existing file, which
                 // fails if it's still open from the previous loop. Close it first:
                 pblocktree.reset();
@@ -1618,6 +1632,13 @@ bool AppInitMain(NodeContext& node)
                     if (fPruneMode)
                         CleanupBlockRevFiles();
                 }
+
+                llmq::DestroyLLMQSystem();
+                deterministicMNManager.reset();
+                pspecialdb.reset();
+                pspecialdb.reset(new CSpecialDB(nSpecialDbCache, false, fReindex || fReindexChainState));
+                deterministicMNManager.reset(new CDeterministicMNManager(*pspecialdb));
+                llmq::InitLLMQSystem(*pspecialdb, &scheduler, false, fReindex || fReindexChainState);
 
                 if (ShutdownRequested()) break;
 
@@ -1781,7 +1802,7 @@ bool AppInitMain(NodeContext& node)
         ::feeEstimator.Read(est_filein);
     fFeeEstimatesInitialized = true;
 
-    // ********************************************************* Step 8: start indexers
+    // ********************************************************* Step 8-A: start indexers
     if (gArgs.GetBoolArg("-txindex", DEFAULT_TXINDEX)) {
         g_txindex = MakeUnique<TxIndex>(nTxIndexCache, false, fReindex);
         g_txindex->Start();
@@ -1791,6 +1812,29 @@ bool AppInitMain(NodeContext& node)
         InitBlockFilterIndex(filter_type, filter_index_cache, false, fReindex);
         GetBlockFilterIndex(filter_type)->Start();
     }
+
+    // ********************************************************* Step 8-B: check lite mode and load sporks
+
+    // lite mode disables all Dash-specific functionality
+    fLiteMode = gArgs.GetBoolArg("-litemode", false);
+    LogPrintf("fLiteMode %d\n", fLiteMode);
+
+    if (fLiteMode)
+        InitWarning(_("You are starting in lite mode, all BitGreen-specific functionality is disabled.").translated);
+
+    if ((!fLiteMode && !g_txindex)
+       && chainparams.NetworkIDString() != CBaseChainParams::REGTEST) {
+        return InitError(_("Transaction index can't be disabled in full mode. Either start with -litemode command line switch or enable transaction index.").translated);
+    }
+
+    if (!fLiteMode) {
+        uiInterface.InitMessage(_("Loading sporks cache...").translated);
+        CFlatDB<CSporkManager> flatdb6("sporks.dat", "magicSporkCache");
+        if (!flatdb6.Load(sporkManager)) {
+            return InitError(_("Failed to load sporks cache from").translated + "\n" + (GetDataDir() / "sporks.dat").string());
+        }
+    }
+
 
     // ********************************************************* Step 9: load wallet
     for (const auto& client : node.chain_clients) {
@@ -1915,12 +1959,12 @@ bool AppInitMain(NodeContext& node)
     // ********************************************************* Step 10-C: schedule BitGreen-specific tasks
 
     if (!fLiteMode) {
-        scheduler.scheduleEvery(boost::bind(&CNetFulfilledRequestManager::DoMaintenance, boost::ref(netfulfilledman)), 60 * 1000);
-        scheduler.scheduleEvery(boost::bind(&CMasternodeSync::DoMaintenance, boost::ref(masternodeSync), boost::ref(*g_connman)), 1 * 1000);
-        scheduler.scheduleEvery(boost::bind(&CGovernanceManager::DoMaintenance, boost::ref(governance), boost::ref(*g_connman)), 60 * 5 * 1000);
+        scheduler.scheduleEvery(boost::bind(&CNetFulfilledRequestManager::DoMaintenance, boost::ref(netfulfilledman)), std::chrono::milliseconds{60 * 1000});
+        scheduler.scheduleEvery(boost::bind(&CMasternodeSync::DoMaintenance, boost::ref(masternodeSync), boost::ref(*g_connman)), std::chrono::milliseconds{1 * 1000});
+        scheduler.scheduleEvery(boost::bind(&CGovernanceManager::DoMaintenance, boost::ref(governance), boost::ref(*g_connman)), std::chrono::milliseconds{60 * 5 * 1000});
     }
 
-    scheduler.scheduleEvery(boost::bind(&CMasternodeUtils::DoMaintenance, boost::ref(*g_connman)), 1 * 1000);
+    scheduler.scheduleEvery(boost::bind(&CMasternodeUtils::DoMaintenance, boost::ref(*g_connman)), std::chrono::milliseconds{1 * 1000});
 
     llmq::StartLLMQSystem();
 

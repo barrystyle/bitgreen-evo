@@ -245,3 +245,13 @@ void CMainSignals::NewPoWValidBlock(const CBlockIndex *pindex, const std::shared
     LOG_EVENT("%s: block hash=%s", __func__, block->GetHash().ToString());
     m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NewPoWValidBlock(pindex, block); });
 }
+
+void CMainSignals::NotifyGovernanceVote(const CGovernanceVote &vote)
+{
+    m_internals->NotifyGovernanceVote(vote);
+}
+
+void CMainSignals::NotifyGovernanceObject(const CGovernanceObject &object)
+{
+    m_internals->NotifyGovernanceObject(object);
+}

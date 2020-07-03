@@ -12,10 +12,10 @@
 class CTransaction;
 class CBlock;
 class CBlockIndex;
-class CValidationState;
+class BlockValidationState;
 
-bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state);
-bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CValidationState& state, bool fJustCheck, bool fCheckCbTxMerleRoots);
+bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindexPrev, BlockValidationState& state);
+bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, BlockValidationState& state, bool fJustCheck, bool fCheckCbTxMerleRoots);
 bool UndoSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex);
 
 template <typename T>

@@ -38,6 +38,8 @@
 #include <queue>
 #include <utility>
 
+class CValidationState;
+
 int64_t nLastCoinStakeSearchInterval = 0;
 
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
@@ -170,9 +172,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     if (fProofOfStake)
         pblock->vtx.resize(pblock->vtx.size() + 1);
 
-    int nPackagesSelected = 0;
-    int nDescendantsUpdated = 0;
-
     {
         LOCK(mempool.cs);
         addPackageTxs(nPackagesSelected, nDescendantsUpdated);
@@ -225,24 +224,21 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
     m_last_block_num_txs = nBlockTx;
     m_last_block_weight = nBlockWeight;
+    BlockValidationState state;
 
-    CValidationState state;
+    coinbaseTx.vin[0].scriptSig = CScript() << OP_RETURN;
 
-    // if (!fProofOfStake) {
-    //     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
-    // } else {
-        coinbaseTx.vin[0].scriptSig = CScript() << OP_RETURN;
+    CCbTx cbTx;
+    cbTx.nVersion = (nHeight > chainparams.GetConsensus().nLLMQActivationHeight) ? 2 : 1;
+    cbTx.nHeight = nHeight;
 
-        CCbTx cbTx;
-        cbTx.nVersion = (nHeight > chainparams.GetConsensus().nLLMQActivationHeight) ? 2 : 1;
-        cbTx.nHeight = nHeight;
+    if (!CalcCbTxMerkleRootMNList(*pblock, pindexPrev, cbTx.merkleRootMNList, state))
+        throw std::runtime_error(strprintf("%s: CalcCbTxMerkleRootMNList failed: %s", __func__, state.ToString()));
 
-        if (!CalcCbTxMerkleRootMNList(*pblock, pindexPrev, cbTx.merkleRootMNList, state))
-            throw std::runtime_error(strprintf("%s: CalcCbTxMerkleRootMNList failed: %s", __func__, FormatStateMessage(state)));
-        if (!CalcCbTxMerkleRootQuorums(*pblock, pindexPrev, cbTx.merkleRootQuorums, state))
-            throw std::runtime_error(strprintf("%s: CalcCbTxMerkleRootQuorums failed: %s", __func__, FormatStateMessage(state)));
+    if (!CalcCbTxMerkleRootQuorums(*pblock, pindexPrev, cbTx.merkleRootQuorums, state))
+        throw std::runtime_error(strprintf("%s: CalcCbTxMerkleRootQuorums failed: %s", __func__, state.ToString()));
 
-        SetTxPayload(coinbaseTx, cbTx);
+    SetTxPayload(coinbaseTx, cbTx);
 
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
     if (fIncludeWitness)
@@ -258,11 +254,10 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     pblock->nBits          = GetNextWorkRequired(pindexPrev, pblock, chainparams.GetConsensus());
     pblock->nNonce         = 0;
     pblocktemplate->vTxSigOpsCost[0] = WITNESS_SCALE_FACTOR * GetLegacySigOpCount(*pblock->vtx[0]);
-
-    BlockValidationState state;
+    
     if (!TestBlockValidity(state, chainparams, *pblock, pindexPrev, false, false)) {
         mempool.clear();
-        throw std::runtime_error(strprintf("%s: TestBlockValidity failed: %s", __func__, FormatStateMessage(state)));
+        throw std::runtime_error(strprintf("%s: TestBlockValidity failed: %s", __func__, state.ToString()));
     }
     int64_t nTime2 = GetTimeMicros();
 
@@ -534,7 +529,7 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
     ++nExtraNonce;
     unsigned int nHeight = pindexPrev->nHeight+1; // Height first in coinbase required for block.version=2
     CMutableTransaction txCoinbase(*pblock->vtx[0]);
-    txCoinbase.vin[0].scriptSig = (CScript() << nHeight << CScriptNum(nExtraNonce)) + COINBASE_FLAGS;
+    txCoinbase.vin[0].scriptSig = (CScript() << nHeight << CScriptNum(nExtraNonce));
     assert(txCoinbase.vin[0].scriptSig.size() <= 100);
 
     pblock->vtx[0] = MakeTransactionRef(std::move(txCoinbase));
@@ -629,7 +624,7 @@ void PoSMiner(std::shared_ptr<CWallet> pwallet)
             //
             CBlockIndex* pindexPrev = ChainActive().Tip();
             bool fPoSCancel = false;
-            std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(coinbaseScript, pwallet, true, &fPoSCancel));
+            std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(mempool, Params()).CreateNewBlock(coinbaseScript, pwallet, true, &fPoSCancel));
             if (!pblocktemplate.get())
             {
                 if (fPoSCancel == true)
