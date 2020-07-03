@@ -7,6 +7,7 @@
 #include <llmq/quorums_utils.h>
 
 #include <chainparams.h>
+#include <consensus/validation.h>
 #include <validation.h>
 
 #include <special/specialtx.h>
@@ -156,47 +157,47 @@ void CFinalCommitmentTxPayload::ToJson(UniValue& obj) const
     obj.pushKV("commitment", qcObj);
 }
 
-bool CheckLLMQCommitment(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckLLMQCommitment(const CTransaction& tx, const CBlockIndex* pindexPrev, BlockValidationState& state)
 {
     CFinalCommitmentTxPayload qcTx;
     if (!GetTxPayload(tx, qcTx)) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-payload");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-payload");
     }
 
     if (qcTx.nVersion == 0 || qcTx.nVersion > CFinalCommitmentTxPayload::CURRENT_VERSION) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-version");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-version");
     }
 
     if (qcTx.nHeight != pindexPrev->nHeight + 1) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-height");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-height");
     }
 
     if (!::BlockIndex().count(qcTx.commitment.quorumHash)) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-quorum-hash");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-quorum-hash");
     }
 
     const CBlockIndex* pindexQuorum = ::BlockIndex()[qcTx.commitment.quorumHash];
 
     if (pindexQuorum != pindexPrev->GetAncestor(pindexQuorum->nHeight)) {
         // not part of active chain
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-quorum-hash");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-quorum-hash");
     }
 
     if (!Params().GetConsensus().llmqs.count((Consensus::LLMQType)qcTx.commitment.llmqType)) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-type");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-type");
     }
     const auto& params = Params().GetConsensus().llmqs.at((Consensus::LLMQType)qcTx.commitment.llmqType);
 
     if (qcTx.commitment.IsNull()) {
         if (!qcTx.commitment.VerifyNull()) {
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-invalid-null");
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-invalid-null");
         }
         return true;
     }
 
     auto members = CLLMQUtils::GetAllQuorumMembers(params.type, pindexQuorum);
     if (!qcTx.commitment.Verify(members, false)) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-qc-invalid");
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,  REJECT_INVALID, "bad-qc-invalid");
     }
 
     return true;

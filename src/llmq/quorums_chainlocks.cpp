@@ -19,7 +19,7 @@
 #include <util/init.h>
 #include <validation.h>
 
-extern  std::string FormatStateMessage(const CValidationState &state);
+extern  std::string FormatStateMessage(const BlockValidationState &state);
 
 namespace llmq
 {
@@ -500,7 +500,7 @@ void CChainLocksHandler::EnforceBestChainLock()
         activateNeeded = ChainActive().Tip()->GetAncestor(currentBestChainLockBlockIndex->nHeight) != currentBestChainLockBlockIndex;
     }
 
-    CValidationState state;
+    BlockValidationState state;
     if (activateNeeded && !ActivateBestChain(state, Params())) {
         LogPrintf("CChainLocksHandler::%s -- ActivateBestChain failed: %s\n", __func__, FormatStateMessage(state));
     }
@@ -557,7 +557,7 @@ void CChainLocksHandler::DoInvalidateBlock(const CBlockIndex* pindex, bool activ
         // get the non-const pointer
         CBlockIndex* pindex2 = ::BlockIndex()[pindex->GetBlockHash()];
 
-        CValidationState state;
+        BlockValidationState state;
         if (!InvalidateBlock(state, params, pindex2)) {
             LogPrintf("CChainLocksHandler::%s -- InvalidateBlock failed: %s\n", __func__, FormatStateMessage(state));
             // This should not have happened and we are in a state were it's not safe to continue anymore
@@ -565,7 +565,7 @@ void CChainLocksHandler::DoInvalidateBlock(const CBlockIndex* pindex, bool activ
         }
     }
 
-    CValidationState state;
+    BlockValidationState state;
     if (activateBestChain && !ActivateBestChain(state, params)) {
         LogPrintf("CChainLocksHandler::%s -- ActivateBestChain failed: %s\n", __func__, FormatStateMessage(state));
         // This should not have happened and we are in a state were it's not safe to continue anymore
