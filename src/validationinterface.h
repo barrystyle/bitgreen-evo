@@ -164,6 +164,10 @@ protected:
      * Called on a background thread.
      */
     virtual void ChainStateFlushed(const CBlockLocator &locator) {}
+
+    /** Notifies new chain lock block */
+    virtual void NotifyChainLock(const CBlockIndex* pindex) {}
+
     /**
      * Notifies listeners of a block validation result.
      * If the provided BlockValidationState IsValid, the provided block

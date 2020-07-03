@@ -246,6 +246,11 @@ void CMainSignals::NewPoWValidBlock(const CBlockIndex *pindex, const std::shared
     m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NewPoWValidBlock(pindex, block); });
 }
 
+void CMainSignals::NotifyChainLock(const CBlockIndex* pindexChainLock)
+{
+    m_internals->NotifyChainLock(pindexChainLock);
+}
+
 void CMainSignals::NotifyGovernanceVote(const CGovernanceVote &vote)
 {
     m_internals->NotifyGovernanceVote(vote);
