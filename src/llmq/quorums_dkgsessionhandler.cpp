@@ -47,7 +47,7 @@ void CDKGPendingMessages::PushPendingMessage(NodeId from, const int nMsgType, CD
     LOCK2(cs_main, cs);
 
     if (!seenMessages.emplace(hash).second) {
-        LogPrint(BCLog::LLMQDKG, "CDKGPendingMessages::%s -- already seen %s, peer=%d", __func__, from);
+        LogPrint(BCLog::LLMQ, "CDKGPendingMessages::%s -- already seen %s, peer=%d", __func__, from);
         return;
     }
 
@@ -486,7 +486,7 @@ void CDKGSessionHandler::HandleDKGRound()
             }
         }
         if (!connections.empty()) {
-            if (LogAcceptCategory(BCLog::LLMQDKG)) {
+            if (LogAcceptCategory(BCLog::LLMQ)) {
                 std::string debugMsg = strprintf("CDKGSessionManager::%s -- adding masternodes quorum connections for quorum %s:\n", __func__, curSession->pindexQuorum->GetBlockHash().ToString());
                 auto mnList = deterministicMNManager->GetListAtChainTip();
                 for (const auto& c : connections) {
@@ -497,7 +497,7 @@ void CDKGSessionHandler::HandleDKGRound()
                         debugMsg += strprintf("  %s (%s)\n", c.ToString(), dmn->pdmnState->addr.ToString());
                     }
                 }
-                LogPrint(BCLog::LLMQDKG, debugMsg.c_str());
+                LogPrint(BCLog::LLMQ, debugMsg.c_str());
             }
             g_connman->AddMasternodeQuorumNodes(params.type, curQuorumHash, connections);
         }
@@ -557,7 +557,7 @@ void CDKGSessionHandler::PhaseHandlerThread()
                 status.aborted = true;
                 return true;
             });
-            LogPrint(BCLog::LLMQDKG, "CDKGSessionHandler::%s -- aborted current DKG session for llmq=%s\n", __func__, params.name);
+            LogPrint(BCLog::LLMQ, "CDKGSessionHandler::%s -- aborted current DKG session for llmq=%s\n", __func__, params.name);
         }
     }
 }

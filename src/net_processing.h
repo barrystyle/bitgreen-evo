@@ -92,9 +92,9 @@ struct CNodeStateStats {
 bool GetNodeStateStats(NodeId nodeid, CNodeStateStats &stats);
 bool IsBanned(NodeId nodeid);
 /** Relay transaction to every node */
-void Misbehaving(NodeId nodeid, int howmuch, const std::string& message="") EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 void RequestData(const NodeId id, const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 bool RequestDataAvailable(const NodeId id, size_t nNewDataSize);
 extern void RemoveDataRequest(const NodeId id, const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
-
+/** Misbehaviour */
+void Misbehaving(NodeId nodeid, int howmuch, const std::string& message="") EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 #endif // BITCOIN_NET_PROCESSING_H

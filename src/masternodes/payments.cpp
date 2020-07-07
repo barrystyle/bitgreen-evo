@@ -39,7 +39,7 @@ bool IsBlockValueValid(const CBlock& block, int nBlockHeight, CAmount blockRewar
     int n = block.IsProofOfStake() ? 1 : 0;
     CAmount nValueIn = 0;
     if (block.IsProofOfStake()) {
-        CCoinsViewCache view(pcoinsTip.get());
+        CCoinsViewCache view(&::ChainstateActive().CoinsTip());
         nValueIn += view.GetValueIn(*block.vtx[1]);
     }
 

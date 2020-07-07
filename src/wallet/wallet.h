@@ -7,17 +7,21 @@
 #define BITCOIN_WALLET_WALLET_H
 
 #include <amount.h>
+#include <index/txindex.h>
 #include <interfaces/chain.h>
 #include <interfaces/handler.h>
 #include <outputtype.h>
 #include <policy/feerate.h>
 #include <psbt.h>
+#include <pos/kernel.h>
+#include <script/sign.h>
 #include <tinyformat.h>
 #include <ui_interface.h>
 #include <util/message.h>
 #include <util/strencodings.h>
 #include <util/string.h>
 #include <util/system.h>
+#include <script/signingprovider.h>
 #include <validationinterface.h>
 #include <wallet/coinselection.h>
 #include <wallet/crypter.h>
@@ -66,7 +70,7 @@ WalletCreationStatus CreateWallet(interfaces::Chain& chain, const SecureString& 
 //! -paytxfee default
 constexpr CAmount DEFAULT_PAY_TX_FEE = 0;
 //! -fallbackfee default
-static const CAmount DEFAULT_FALLBACK_FEE = 0;
+static const CAmount DEFAULT_FALLBACK_FEE = 20000;
 //! -discardfee default
 static const CAmount DEFAULT_DISCARD_FEE = 10000;
 //! -mintxfee default
@@ -93,6 +97,8 @@ constexpr CAmount HIGH_MAX_TX_FEE{100 * HIGH_TX_FEE_PER_KB};
 //! Pre-calculated constants for input size estimation in *virtual size*
 static constexpr size_t DUMMY_NESTED_P2WPKH_INPUT_SIZE = 91;
 
+extern bool fWalletUnlockStakingOnly;
+
 class CCoinControl;
 class COutput;
 class CScript;
@@ -101,11 +107,17 @@ struct FeeCalculation;
 enum class FeeEstimateMode;
 class ReserveDestination;
 
+enum AvailableCoinsType
+{
+    ALL_COINS,
+    ONLY_COLLATERALS, // find masternode outputs including locked ones (use with caution)
+};
+
 //! Default for -addresstype
-constexpr OutputType DEFAULT_ADDRESS_TYPE{OutputType::BECH32};
+constexpr OutputType DEFAULT_ADDRESS_TYPE{OutputType::LEGACY};
 
 //! Default for -changetype
-constexpr OutputType DEFAULT_CHANGE_TYPE{OutputType::CHANGE_AUTO};
+constexpr OutputType DEFAULT_CHANGE_TYPE{OutputType::LEGACY};
 
 static constexpr uint64_t KNOWN_WALLET_FLAGS =
         WALLET_FLAG_AVOID_REUSE

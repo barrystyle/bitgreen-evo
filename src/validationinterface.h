@@ -176,15 +176,16 @@ protected:
      * Notifies listeners that a block which builds directly on our current tip
      * has been received and connected to the headers tree, though not validated yet */
     virtual void NewPoWValidBlock(const CBlockIndex *pindex, const std::shared_ptr<const CBlock>& block) {};
-
-    /** Notifies new chain lock block */
+    virtual void AcceptedBlockHeader(const CBlockIndex *pindexNew) {}
+    virtual void NotifyHeaderTip(const CBlockIndex *pindexNew, bool fInitialDownload) {}
     virtual void NotifyChainLock(const CBlockIndex* pindex) {}
-    /** Notifies masternode list changes */
     virtual void NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff) {}
     virtual void NotifyGovernanceVote(const CGovernanceVote &vote) {}
     virtual void NotifyGovernanceObject(const CGovernanceObject &object) {}
     virtual void NotifyTransactionLock(const CTransaction &tx) {}
     virtual void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) {}
+    virtual void SyncTransaction(const CTransaction &tx, const CBlockIndex *pindex, int posInBlock) {}
+
     friend class CMainSignals;
 };
 
@@ -199,6 +200,8 @@ private:
     friend void ::CallFunctionInValidationInterfaceQueue(std::function<void ()> func);
 
 public:
+    static const int SYNC_TRANSACTION_NOT_IN_BLOCK = -1;
+
     /** Register a CScheduler to give callbacks which should run in the background (may only be called once) */
     void RegisterBackgroundSignalScheduler(CScheduler& scheduler);
     /** Unregister a CScheduler to give callbacks which should run in the background - these callbacks will now be dropped! */
@@ -208,21 +211,23 @@ public:
 
     size_t CallbacksPending();
 
-
-    void UpdatedBlockTip(const CBlockIndex *, const CBlockIndex *, bool fInitialDownload);
-    void TransactionAddedToMempool(const CTransactionRef &);
-    void TransactionRemovedFromMempool(const CTransactionRef &);
+    void AcceptedBlockHeader(const CBlockIndex *);
+    void BlockChecked(const CBlock&, const BlockValidationState&);
     void BlockConnected(const std::shared_ptr<const CBlock> &, const CBlockIndex *pindex);
     void BlockDisconnected(const std::shared_ptr<const CBlock> &, const CBlockIndex* pindex);
     void ChainStateFlushed(const CBlockLocator &);
-    void BlockChecked(const CBlock&, const BlockValidationState&);
     void NewPoWValidBlock(const CBlockIndex *, const std::shared_ptr<const CBlock>&);
-    void NotifyGovernanceVote(const CGovernanceVote&);
-    void NotifyGovernanceObject(const CGovernanceObject&);
-    /** Notifies listeners of a ChainLock. */
     void NotifyChainLock(const CBlockIndex*);
-    /** Notifies masternode list changes */
+    void NotifyGovernanceObject(const CGovernanceObject&);
+    void NotifyGovernanceVote(const CGovernanceVote&);
+    void NotifyHeaderTip(const CBlockIndex *, bool fInitialDownload);
+    void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx);
     void NotifyMasternodeListChanged(bool, const CDeterministicMNList&, const CDeterministicMNListDiff&);
+    void NotifyTransactionLock(const CTransaction &tx);
+    void SyncTransaction(const CTransaction &tx, const CBlockIndex *pindex, int posInBlock);
+    void TransactionAddedToMempool(const CTransactionRef &);
+    void TransactionRemovedFromMempool(const CTransactionRef &);
+    void UpdatedBlockTip(const CBlockIndex *, const CBlockIndex *, bool fInitialDownload);
 };
 
 CMainSignals& GetMainSignals();
