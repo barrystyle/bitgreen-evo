@@ -99,6 +99,13 @@ std::shared_ptr<CWallet> GetWalletForJSONRPCRequest(const JSONRPCRequest& reques
     return wallets.size() == 1 || (request.fHelp && wallets.size() > 0) ? wallets[0] : nullptr;
 }
 
+std::string HelpRequiringPassphrase(const CWallet* pwallet)
+{
+    return pwallet && pwallet->IsCrypted()
+        ? "\nRequires wallet passphrase to be set with walletpassphrase call."
+        : "";
+}
+
 bool EnsureWalletIsAvailable(const CWallet* pwallet, bool avoidException)
 {
     if (pwallet) return true;

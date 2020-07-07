@@ -10,6 +10,7 @@
 #include <primitives/block.h>
 #include <script/standard.h>
 #include <wallet/wallet.h>
+#include <wallet/rpcwallet.h>
 
 typedef std::vector<unsigned char> valtype;
 
@@ -34,7 +35,8 @@ bool CBlockSigner::SignBlock()
         keyID = CPubKey(vSolutions[0]).GetID();
 
     CKey key;
-    if (!wallet->GetKey(keyID, key)) return false;
+    LegacyScriptPubKeyMan& spk_man = EnsureLegacyScriptPubKeyMan(*wallet);
+    if (!spk_man.GetKey(keyID, key)) return false;
     if (!key.Sign(block.GetHash(), block.vchBlockSig)) return false;
     return true;
 }

@@ -17,25 +17,22 @@
 void quorum_list_help()
 {
     throw std::runtime_error(
-        RPCHelpMan{"quorum list", "",
-            {
-                {"count", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "Number of quorums to list. Will list active quorums.\n"
-                    "                   if \"count\" is not specified."}
-            },
-            RPCResult{
+            "quorum list ( count )\n"
+            "List of on-chain quorums\n"
+            "\nArguments:\n"
+            "1. count           (number, optional) Number of quorums to list. Will list active quorums\n"
+            "                   if \"count\" is not specified.\n"
+            "\nResult:\n"
                 "{\n"
                 "  \"quorumName\" : [                    (array of strings) List of quorum hashes per some quorum type.\n"
                 "     \"quorumHash\"                     (string) Quorum hash. Note: most recent quorums come first.\n"
                 "     ,...\n"
                 "  ],\n"
                 "}\n"
-            },
-            RPCExamples{
-                HelpExampleCli("quorum", "list") +
-                HelpExampleCli("quorum", "list 10") +
-                HelpExampleRpc("quorum", "list, 10")
-            }
-        }.ToString()
+            "\nExamples:\n"
+            + HelpExampleCli("quorum", "list")
+            + HelpExampleCli("quorum", "list 10")
+            + HelpExampleRpc("quorum", "list, 10")
     );
 }
 
@@ -414,12 +411,12 @@ UniValue quorum_dkgsimerror(const JSONRPCRequest& request)
 [[ noreturn ]] void quorum_help()
 {
     throw std::runtime_error(
-        RPCHelpMan{"quorum",
-            "\nSet of commands for quorums/LLMQ actions.\n",
-            {
-                {"command", RPCArg::Type::STR, /* default */ "all commands", "The command to get help on"},
-            },
-            RPCResult{
+            "quorum \"command\" ...\n"
+            "Set of commands for quorums/LLMQs.\n"
+            "To get help on individual commands, use \"help quorum command\".\n"
+            "\nArguments:\n"
+            "1. \"command\"        (string, required) The command to execute\n"
+            "\nAvailable commands:\n"
                 "  list              - List of on-chain quorums\n"
                 "  info              - Return information about a quorum\n"
                 "  dkgsimerror       - Simulates DKG errors and malicious behavior.\n"
@@ -429,9 +426,6 @@ UniValue quorum_dkgsimerror(const JSONRPCRequest& request)
                 "  hasrecsig         - Test if a valid recovered signature is present\n"
                 "  getrecsig         - Get a recovered signature\n"
                 "  isconflicting     - Test if a conflict exists\n"
-            },
-            RPCExamples{""},
-        }.ToString()
     );
 }
 

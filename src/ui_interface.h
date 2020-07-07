@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <memory>
+#include <stdint.h>
 #include <string>
 
 class CBlockIndex;
@@ -17,6 +18,10 @@ namespace signals2 {
 class connection;
 }
 } // namespace boost
+
+namespace interfaces {
+class Wallet;
+} // namespace interfaces
 
 /** General change type (added, updated, removed). */
 enum ChangeType

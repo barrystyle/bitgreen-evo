@@ -217,7 +217,7 @@ UniValue gobject_prepare(const JSONRPCRequest& request)
     // -- send the tx to the network
     BlockValidationState state;
     mapValue_t mapValue;
-    if (!pwallet->CommitTransaction(tx, std::move(mapValue), {}, state)) {
+    if (!pwallet->CommitTransaction(tx, std::move(mapValue), {})) {
         throw JSONRPCError(RPC_INTERNAL_ERROR, "CommitTransaction failed! Reason given: " + state.GetRejectReason());
     }
 
@@ -552,7 +552,8 @@ UniValue gobject_vote_many(const JSONRPCRequest& request)
     auto mnList = deterministicMNManager->GetListAtChainTip();
     mnList.ForEachMN(true, [&](const CDeterministicMNCPtr& dmn) {
         CKey votingKey;
-        if (pwallet->GetKey(dmn->pdmnState->keyIDVoting, votingKey)) {
+        LegacyScriptPubKeyMan& spk_man = EnsureLegacyScriptPubKeyMan(*pwallet);
+        if (spk_man.GetKey(dmn->pdmnState->keyIDVoting, votingKey)) {
             votingKeys.emplace(dmn->proTxHash, votingKey);
         }
     });
@@ -609,7 +610,8 @@ UniValue gobject_vote_alias(const JSONRPCRequest& request)
     }
 
     CKey votingKey;
-    if (!pwallet->GetKey(dmn->pdmnState->keyIDVoting, votingKey)) {
+    LegacyScriptPubKeyMan& spk_man = EnsureLegacyScriptPubKeyMan(*pwallet);
+    if (!spk_man.GetKey(dmn->pdmnState->keyIDVoting, votingKey)) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Private key for voting address not known by wallet");
     }
 

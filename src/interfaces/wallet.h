@@ -11,6 +11,9 @@
 #include <support/allocators/secure.h> // For SecureString
 #include <ui_interface.h>              // For ChangeType
 #include <util/message.h>
+#ifdef ENABLE_WALLET
+#include <wallet/wallet.h>
+#endif
 
 #include <functional>
 #include <map>
@@ -136,7 +139,9 @@ public:
         bool sign,
         int& change_pos,
         CAmount& fee,
-        std::string& fail_reason) = 0;
+        std::string& fail_reason,
+        AvailableCoinsType nCoinType = ALL_COINS,
+        bool fUseInstantSend = false) = 0;
 
     //! Commit transaction.
     virtual void commitTransaction(CTransactionRef tx,
@@ -297,6 +302,14 @@ public:
     //! Register handler for keypool changed messages.
     using CanGetAddressesChangedFn = std::function<void()>;
     virtual std::unique_ptr<Handler> handleCanGetAddressesChanged(CanGetAddressesChangedFn fn) = 0;
+
+    //! Register handler for transaction locks.
+    using NotifyISLockReceivedFn = std::function<void()>;
+    virtual std::unique_ptr<Handler> handleNotifyISLockReceived(NotifyISLockReceivedFn fn) = 0;
+
+    //! Register handler for chain lock received.
+    using ChainLockReceivedFn = std::function<void(int height)>;
+    virtual std::unique_ptr<Handler> handleChainLockReceived(ChainLockReceivedFn fn) = 0;
 };
 
 //! Information about one wallet address.
@@ -362,6 +375,8 @@ struct WalletTxStatus
     bool is_abandoned;
     bool is_coinbase;
     bool is_in_main_chain;
+    bool is_chain_locked;
+    bool is_locked_instantsend;
 };
 
 //! Wallet transaction output.

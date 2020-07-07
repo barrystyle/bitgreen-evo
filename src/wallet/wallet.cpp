@@ -251,7 +251,7 @@ WalletCreationStatus CreateWallet(interfaces::Chain& chain, const SecureString& 
     return WalletCreationStatus::SUCCESS;
 }
 
-const uint256 CWalletTx::ABANDON_HASH(UINT256_ONE());
+const uint256 CMerkleTx::ABANDON_HASH(uint256S("0000000000000000000000000000000000000000000000000000000000000001"));
 
 /** @defgroup mapWallet
  *
@@ -2083,7 +2083,7 @@ CAmount CWallet::GetAvailableBalance(const CCoinControl* coinControl) const
     return balance;
 }
 
-void CWallet::AvailableCoins(interfaces::Chain::Lock& locked_chain, std::vector<COutput>& vCoins, bool fOnlySafe, const CCoinControl* coinControl, const CAmount& nMinimumAmount, const CAmount& nMaximumAmount, const CAmount& nMinimumSumAmount, const uint64_t nMaximumCount) const
+void CWallet::AvailableCoins(interfaces::Chain::Lock& locked_chain, std::vector<COutput> &vCoins, bool fOnlySafe, const CCoinControl *coinControl, const CAmount &nMinimumAmount, const CAmount &nMaximumAmount, const CAmount &nMinimumSumAmount, const uint64_t nMaximumCount, const int nMinDepth, const int nMaxDepth, AvailableCoinsType nCoinType, bool fUseInstantSend) const
 {
     AssertLockHeld(cs_wallet);
 
@@ -2159,13 +2159,17 @@ void CWallet::AvailableCoins(interfaces::Chain::Lock& locked_chain, std::vector<
         }
 
         for (unsigned int i = 0; i < wtx.tx->vout.size(); i++) {
+
+            if (nCoinType == ONLY_COLLATERALS && wtx.tx->vout[i].nValue != 2500 * COIN)
+                continue;
+
             if (wtx.tx->vout[i].nValue < nMinimumAmount || wtx.tx->vout[i].nValue > nMaximumAmount)
                 continue;
 
             if (coinControl && coinControl->HasSelected() && !coinControl->fAllowOtherInputs && !coinControl->IsSelected(COutPoint(entry.first, i)))
                 continue;
 
-            if (IsLockedCoin(entry.first, i))
+            if (IsLockedCoin(entry.first, i) && nCoinType != ONLY_COLLATERALS)
                 continue;
 
             if (IsSpent(wtxid, i))
@@ -2432,7 +2436,7 @@ bool CWallet::SignTransaction(CMutableTransaction& tx) const
             return false;
         }
         const CWalletTx& wtx = mi->second;
-        coins[input.prevout] = Coin(wtx.tx->vout[input.prevout.n], wtx.m_confirm.block_height, wtx.IsCoinBase());
+        coins[input.prevout] = Coin(wtx.tx->vout[input.prevout.n], wtx.m_confirm.block_height, wtx.IsCoinBase(), wtx.IsCoinStake());
     }
     std::map<int, std::string> input_errors;
     return SignTransaction(tx, coins, SIGHASH_ALL, input_errors);
@@ -3078,7 +3082,7 @@ bool CWallet::CreateTransaction(interfaces::Chain::Lock& locked_chain, const std
     return true;
 }
 
-void CWallet::CommitTransaction(CTransactionRef tx, mapValue_t mapValue, std::vector<std::pair<std::string, std::string>> orderForm)
+bool CWallet::CommitTransaction(CTransactionRef tx, mapValue_t mapValue, std::vector<std::pair<std::string, std::string>> orderForm)
 {
     auto locked_chain = chain().lock();
     LOCK(cs_wallet);
@@ -3108,7 +3112,7 @@ void CWallet::CommitTransaction(CTransactionRef tx, mapValue_t mapValue, std::ve
 
     if (!fBroadcastTransactions) {
         // Don't submit tx to the mempool
-        return;
+        return false;
     }
 
     std::string err_string;
@@ -3116,6 +3120,7 @@ void CWallet::CommitTransaction(CTransactionRef tx, mapValue_t mapValue, std::ve
         WalletLogPrintf("CommitTransaction(): Transaction cannot be broadcast immediately, %s\n", err_string);
         // TODO: if we expect the failure to be long term or permanent, instead delete wtx from the wallet and return failure.
     }
+    return true;
 }
 
 DBErrors CWallet::LoadWallet(bool& fFirstRunRet)
@@ -3607,7 +3612,7 @@ void CWallet::AutoLockMasternodeCollaterals()
     LOCK2(cs_main, cs_wallet);
     for (const auto& pair : mapWallet) {
         for (unsigned int i = 0; i < pair.second.tx->vout.size(); ++i) {
-            if (IsMine(pair.second.tx->vout[i]) && !IsSpent(*locked_chain, pair.first, i)) {
+            if (IsMine(pair.second.tx->vout[i]) && !IsSpent(pair.first, i)) {
                 if (deterministicMNManager->IsProTxWithCollateral(pair.second.tx, i) || mnList.HasMNByCollateral(COutPoint(pair.first, i))) {
                     LockCoin(COutPoint(pair.first, i));
                 }
@@ -4270,6 +4275,20 @@ bool CWalletTx::IsImmatureCoinBase() const
     return GetBlocksToMaturity() > 0;
 }
 
+bool CMerkleTx::IsChainLocked() const
+{
+    AssertLockHeld(cs_main);
+    BlockMap::iterator mi = ::BlockIndex().find(hashBlock);
+    if (mi != ::BlockIndex().end() && mi->second != nullptr)
+        return llmq::chainLocksHandler->HasChainLock(mi->second->nHeight, hashBlock);
+    return false;
+}
+
+bool CMerkleTx::IsLockedByInstantSend() const
+{
+    return llmq::quorumInstantSendManager->IsLocked(GetHash());
+}
+
 std::vector<OutputGroup> CWallet::GroupOutputs(const std::vector<COutput>& outputs, bool single_coin) const {
     std::vector<OutputGroup> groups;
     std::map<CTxDestination, OutputGroup> gmap;
@@ -4342,24 +4361,6 @@ bool CWallet::Unlock(const CKeyingMaterial& vMasterKeyIn, bool accept_no_keys)
     NotifyStatusChanged(this);
     return true;
 }
-
-bool CWallet::GetKey(const CKeyID &address, CKey& keyOut) const
-{
-    LOCK(cs_KeyStore);
-    if (!IsCrypted()) {
-        return FillableSigningProvider::GetKey(address, keyOut);
-    }
-
-    CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
-    if (mi != mapCryptedKeys.end())
-    {
-        const CPubKey &vchPubKey = (*mi).second.first;
-        const std::vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
-        return DecryptKey(vMasterKey, vchCryptedSecret, vchPubKey, keyOut);
-    }
-    return false;
-}
-
 
 std::set<ScriptPubKeyMan*> CWallet::GetActiveScriptPubKeyMans() const
 {
@@ -4521,9 +4522,11 @@ bool CWallet::SelectStakeCoins(StakeCoinsSet& setCoins, CAmount nTargetAmount) c
 
 // proof-of-stake: create coin stake transaction
 typedef std::vector<unsigned char> valtype;
-bool CWallet::CreateCoinStake(unsigned int nBits,
+bool CWallet::CreateCoinStake(const FillableSigningProvider& keystore,
+                              unsigned int nBits,
                               int64_t nSearchInterval,
                               CMutableTransaction& txNew,
+                              CKey& key,
                               uint32_t& nTxNewTime,
                               CAmount nFees)
 {
@@ -4633,10 +4636,11 @@ bool CWallet::CreateCoinStake(unsigned int nBits,
                 if (whichType == TX_PUBKEYHASH || whichType == TX_WITNESS_V0_KEYHASH) // pay to address type or witness keyhash
                 {
                     // convert to pay to public key type
-                    CKey key;
-                    if (!GetKey(CKeyID(uint160(vSolutions[0])), key))
+                    uint160 hash160(vSolutions[0]);
+                    CKeyID pubKeyHash(hash160);
+                    if (!keystore.GetKey(pubKeyHash, key))
                     {
-                        LogPrint(BCLog::KERNEL, "%s: failed to get key for kernel type=%d\n", whichType);
+                        LogPrint(BCLog::KERNEL, "CreateCoinStake : failed to get key for kernel type=%d\n", whichType);
                         break;  // unable to find corresponding public key
                     }
                     scriptPubKeyOut << ToByteVector(key.GetPubKey()) << OP_CHECKSIG;
@@ -4720,10 +4724,12 @@ bool CWallet::CreateCoinStake(unsigned int nBits,
     LogPrintf("CreateNewBlock -- nBlockHeight %d blockReward %lld coinbaseTx %s",
                 pIndex0->nHeight+1, nReward, CTransaction(txNew).ToString());
 
-    // Sign
+    // Sign the input coins
     int nIn = 0;
-    for (const CWalletTx* pcoin : vwtxPrev) {
-        if (!SignSignature(*this, *pcoin->tx, txNew, nIn++, SIGHASH_ALL))
+    for (const CWalletTx* pcoin : vwtxPrev)
+    {
+        std::unique_ptr<SigningProvider> provider = GetSolvingProvider(pcoin->tx->vout[0].scriptPubKey);
+        if (!SignSignature(*provider, *pcoin->tx, txNew, nIn++, SIGHASH_ALL))
             return error("CreateCoinStake : failed to sign coinstake");
     }
 
@@ -4734,7 +4740,7 @@ bool CWallet::CreateCoinStake(unsigned int nBits,
 
 void CWallet::GetScriptForMining(CScript& script)
 {
-    ReserveDestination reservedest(this);
+    ReserveDestination reservedest(this, OutputType::LEGACY);
 
     // Reserve a new key pair from key pool
     if (!CanGetAddresses(true)) {
@@ -4742,7 +4748,7 @@ void CWallet::GetScriptForMining(CScript& script)
         return;
     }
     CTxDestination dest;
-    bool ret = reservedest.GetReservedDestination(OutputType::LEGACY, dest, true);
+    bool ret = reservedest.GetReservedDestination(dest, true);
     if (!ret)
     {
         LogPrintf("%s: keypool ran out, please call keypoolrefill first", __func__);

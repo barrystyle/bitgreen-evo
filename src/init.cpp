@@ -121,11 +121,11 @@ static const char* DEFAULT_ASMAP_FILENAME="ip_asn.map";
 /**
  * The PID file facilities.
  */
-static const char* BITGREEN_PID_FILENAME = "bitgreend.pid";
+static const char* BITCOIN_PID_FILENAME = "bitcoind.pid";
 
 static fs::path GetPidFile()
 {
-    return AbsPathForConfigVal(fs::path(gArgs.GetArg("-pid", BITGREEN_PID_FILENAME)));
+    return AbsPathForConfigVal(fs::path(gArgs.GetArg("-pid", BITCOIN_PID_FILENAME)));
 }
 
 NODISCARD static bool CreatePidFile()
@@ -171,7 +171,6 @@ NODISCARD static bool CreatePidFile()
 static std::unique_ptr<ECCVerifyHandle> globalVerifyHandle;
 
 static boost::thread_group threadGroup;
-static CScheduler scheduler;
 
 void Interrupt(NodeContext& node)
 {
@@ -346,14 +345,6 @@ void Shutdown(NodeContext& node)
     activeMasternodeInfo.blsKeyOperator.reset();
     activeMasternodeInfo.blsPubKeyOperator.reset();
 
-    node.chain_clients.clear();
-    UnregisterAllValidationInterfaces();
-    GetMainSignals().UnregisterBackgroundSignalScheduler();
-    globalVerifyHandle.reset();
-    ECC_Stop();
-    if (node.mempool) node.mempool = nullptr;
-    node.scheduler.reset();
-
     try {
         if (!fs::remove(GetPidFile())) {
             LogPrintf("%s: Unable to remove PID file: File does not exist\n", __func__);
@@ -361,7 +352,13 @@ void Shutdown(NodeContext& node)
     } catch (const fs::filesystem_error& e) {
         LogPrintf("%s: Unable to remove PID file: %s\n", __func__, fsbridge::get_filesystem_error_message(e));
     }
-
+    node.chain_clients.clear();
+    UnregisterAllValidationInterfaces();
+    GetMainSignals().UnregisterBackgroundSignalScheduler();
+    globalVerifyHandle.reset();
+    ECC_Stop();
+    if (node.mempool) node.mempool = nullptr;
+    node.scheduler.reset();
     LogPrintf("%s: done\n", __func__);
 }
 
@@ -458,7 +455,7 @@ void SetupServerArgs()
     gArgs.AddArg("-par=<n>", strprintf("Set the number of script verification threads (%u to %d, 0 = auto, <0 = leave that many cores free, default: %d)",
         -GetNumCores(), MAX_SCRIPTCHECK_THREADS, DEFAULT_SCRIPTCHECK_THREADS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-persistmempool", strprintf("Whether to save the mempool on shutdown and load on restart (default: %u)", DEFAULT_PERSIST_MEMPOOL), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    gArgs.AddArg("-pid=<file>", strprintf("Specify pid file. Relative paths will be prefixed by a net-specific datadir location. (default: %s)", BITGREEN_PID_FILENAME), false, OptionsCategory::OPTIONS);
+    gArgs.AddArg("-pid=<file>", strprintf("Specify pid file. Relative paths will be prefixed by a net-specific datadir location. (default: %s)", BITCOIN_PID_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-prune=<n>", strprintf("Reduce storage requirements by enabling pruning (deleting) of old blocks. This allows the pruneblockchain RPC to be called to delete specific blocks, and enables automatic pruning of old blocks if a target size in MiB is provided. This mode is incompatible with -txindex and -rescan. "
             "Warning: Reverting this setting requires re-downloading the entire blockchain. "
             "(default: 0 = disable pruning blocks, 1 = allow manual pruning via RPC, >=%u = automatically prune block files to stay under the specified target size in MiB)", MIN_DISK_SPACE_FOR_BLOCK_FILES / 1024 / 1024), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -1357,7 +1354,6 @@ bool AppInitMain(NodeContext& node)
         script_threads += GetNumCores();
     }
 
-
     // Subtract 1 because the main thread counts towards the par threads
     script_threads = std::max(script_threads - 1, 0);
 
@@ -1378,6 +1374,11 @@ bool AppInitMain(NodeContext& node)
     // Start the lightweight task scheduler thread
     CScheduler::Function serviceLoop = [&node]{ node.scheduler->serviceQueue(); };
     threadGroup.create_thread(std::bind(&TraceThread<CScheduler::Function>, "scheduler", serviceLoop));
+
+    // Gather some entropy once per minute.
+    node.scheduler->scheduleEvery([]{
+        RandAddPeriodic();
+    }, std::chrono::minutes{1});
 
     GetMainSignals().RegisterBackgroundSignalScheduler(*node.scheduler);
 
@@ -1541,7 +1542,7 @@ bool AppInitMain(NodeContext& node)
             return false;
         }
         const uint256 asmap_version = SerializeHash(asmap);
-        //node.connman->SetAsmap(std::move(asmap));
+        node.connman->SetAsmap(std::move(asmap));
         LogPrintf("Using asmap version %s for IP bucketing\n", asmap_version.ToString());
     } else {
         LogPrintf("Using /16 prefix for IP bucketing\n");
@@ -1554,6 +1555,32 @@ bool AppInitMain(NodeContext& node)
         RegisterValidationInterface(g_zmq_notification_interface);
     }
 #endif
+
+    std::vector<std::string> vSporkAddresses;
+    if (!gArgs.GetArgs("-sporkaddr").empty())
+        vSporkAddresses = gArgs.GetArgs("-sporkaddr");
+    else
+        vSporkAddresses = Params().SporkAddresses();
+
+    for (const auto& address: vSporkAddresses) {
+        if (!sporkManager.SetSporkAddress(address)) {
+            LogPrintf("Invalid spork address specified with -sporkaddr\n");
+            return false;
+        }
+    }
+
+    int minsporkkeys = gArgs.GetArg("-minsporkkeys", Params().MinSporkKeys());
+    if (!sporkManager.SetMinSporkKeys(minsporkkeys)) {
+        LogPrintf("Invalid minimum number of spork signers specified with -minsporkkeys\n");
+        return false;
+    }
+
+    if (gArgs.IsArgSet("-sporkkey")) {
+        if (!sporkManager.SetPrivKey(gArgs.GetArg("-sporkkey", ""))) {
+            LogPrintf("Unable to sign spork message, wrong key?\n");
+            return false;
+        }
+    }
 
     g_mn_notification_interface = new CMNNotificationInterface(*g_connman.get());
     RegisterValidationInterface(g_mn_notification_interface);
@@ -1634,7 +1661,7 @@ bool AppInitMain(NodeContext& node)
                 pspecialdb.reset();
                 pspecialdb.reset(new CSpecialDB(nSpecialDbCache, false, fReindex || fReindexChainState));
                 deterministicMNManager.reset(new CDeterministicMNManager(*pspecialdb));
-                llmq::InitLLMQSystem(*pspecialdb, &scheduler, false, fReindex || fReindexChainState);
+                llmq::InitLLMQSystem(*pspecialdb, node.scheduler.get(), false, fReindex || fReindexChainState);
 
                 if (ShutdownRequested()) break;
 
@@ -1693,7 +1720,7 @@ bool AppInitMain(NodeContext& node)
                 }
 
                 // ReplayBlocks is a no-op if we cleared the coinsviewdb with -reindex or -reindex-chainstate
-                if (!::ChainstateActive().ReplayBlocks(chainparams, &::ChainstateActive().CoinsDB())) {
+                if (!::ChainstateActive().ReplayBlocks(chainparams)) {
                     strLoadError = _("Unable to replay blocks. You will need to rebuild the database using -reindex-chainstate.").translated;
                     break;
                 }
@@ -1953,14 +1980,13 @@ bool AppInitMain(NodeContext& node)
     }
 
     // ********************************************************* Step 10-C: schedule BitGreen-specific tasks
-
     if (!fLiteMode) {
-        scheduler.scheduleEvery(boost::bind(&CNetFulfilledRequestManager::DoMaintenance, boost::ref(netfulfilledman)), std::chrono::milliseconds{60 * 1000});
-        scheduler.scheduleEvery(boost::bind(&CMasternodeSync::DoMaintenance, boost::ref(masternodeSync), boost::ref(*g_connman)), std::chrono::milliseconds{1 * 1000});
-        scheduler.scheduleEvery(boost::bind(&CGovernanceManager::DoMaintenance, boost::ref(governance), boost::ref(*g_connman)), std::chrono::milliseconds{60 * 5 * 1000});
+        node.scheduler->scheduleEvery(boost::bind(&CNetFulfilledRequestManager::DoMaintenance, boost::ref(netfulfilledman)), std::chrono::seconds{60});
+        node.scheduler->scheduleEvery(boost::bind(&CMasternodeSync::DoMaintenance, boost::ref(masternodeSync), boost::ref(*g_connman)), std::chrono::seconds{1});
+        node.scheduler->scheduleEvery(boost::bind(&CGovernanceManager::DoMaintenance, boost::ref(governance), boost::ref(*g_connman)), std::chrono::seconds{300});
     }
 
-    scheduler.scheduleEvery(boost::bind(&CMasternodeUtils::DoMaintenance, boost::ref(*g_connman)), std::chrono::milliseconds{1 * 1000});
+    node.scheduler->scheduleEvery(boost::bind(&CMasternodeUtils::DoMaintenance, boost::ref(*g_connman)), std::chrono::seconds{1});
 
     llmq::StartLLMQSystem();
 

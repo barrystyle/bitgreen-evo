@@ -246,32 +246,20 @@ void CMainSignals::NewPoWValidBlock(const CBlockIndex *pindex, const std::shared
     m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NewPoWValidBlock(pindex, block); });
 }
 
-void CMainSignals::NotifyHeaderTip(const CBlockIndex * pindex, bool fInitialDownload) {
-    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyHeaderTip(pindex, fInitialDownload); });
-}
-
-void CMainSignals::AcceptedBlockHeader(const CBlockIndex * pindex) {
-    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.AcceptedBlockHeader(pindex); });
-}
-
-void CMainSignals::NotifyGovernanceVote(const CGovernanceVote &vote) {
-    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyGovernanceVote(vote); });
-}
-
-void CMainSignals::NotifyGovernanceObject(const CGovernanceObject &object) {
-     m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyGovernanceObject(object); });
+void CMainSignals::NotifyChainLock(const CBlockIndex* pindexChainLock) {
+    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyChainLock(pindexChainLock); });
 }
 
 void CMainSignals::NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff) {
      m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyMasternodeListChanged(undo, oldMNList, diff); });
 }
 
-void CMainSignals::NotifyChainLock(const CBlockIndex* pindexChainLock) {
-    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyChainLock(pindexChainLock); });
-}
-
 void CMainSignals::SyncTransaction(const CTransaction &tx, const CBlockIndex *pindex, int posInBlock) {
     m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.SyncTransaction(tx, pindex, posInBlock); });
+}
+
+void CMainSignals::AcceptedBlockHeader(const CBlockIndex * pindexNew) {
+    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.AcceptedBlockHeader(pindexNew); });
 }
 
 void CMainSignals::NotifyTransactionLock(const CTransaction &tx) {
@@ -280,4 +268,12 @@ void CMainSignals::NotifyTransactionLock(const CTransaction &tx) {
 
 void CMainSignals::NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) {
     m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyInstantSendDoubleSpendAttempt(currentTx, previousTx); });
+}
+
+void CMainSignals::NotifyGovernanceVote(const CGovernanceVote &vote) {
+    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyGovernanceVote(vote); });
+}
+
+void CMainSignals::NotifyGovernanceObject(const CGovernanceObject &object) {
+     m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyGovernanceObject(object); });
 }

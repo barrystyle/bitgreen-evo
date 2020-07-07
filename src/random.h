@@ -11,7 +11,7 @@
 #include <uint256.h>
 
 #include <chrono>
-#include <stdint.h>
+#include <cstdint>
 #include <limits>
 
 /**
@@ -86,12 +86,26 @@ bool GetRandBool(double rate);
 void GetStrongRandBytes(unsigned char* buf, int num) noexcept;
 
 /**
+ * Gather entropy from various expensive sources, and feed them to the PRNG state.
+ *
+ * Thread-safe.
+ */
+void RandAddPeriodic() noexcept;
+
+/**
+ * Gathers entropy from the low bits of the time at which events occur. Should
+ * be called with a uint32_t describing the event at the time an event occurs.
+ *
+ * Thread-safe.
+ */
+void RandAddEvent(const uint32_t event_info) noexcept;
+
+/**
  * Sleep for 1ms, gather entropy from various sources, and feed them to the PRNG state.
  *
  * Thread-safe.
  */
 void RandAddSeedSleep();
-void RandAddEvent(const uint32_t event_info) noexcept;
 
 /**
  * Fast randomness source. This is seeded once with secure random data, but

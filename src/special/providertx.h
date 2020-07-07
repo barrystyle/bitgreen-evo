@@ -9,7 +9,10 @@
 #include <consensus/validation.h>
 #include <primitives/transaction.h>
 
+#include <base58.h>
 #include <netaddress.h>
+#include <script/standard.h>
+#include <key_io.h>
 #include <pubkey.h>
 
 class CBlockIndex;

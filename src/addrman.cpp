@@ -624,6 +624,23 @@ CAddrInfo CAddrMan::SelectTriedCollision_()
     return mapInfo[id_old];
 }
 
+CAddrInfo CAddrMan::GetAddressInfo_(const CService& addr)
+{
+    CAddrInfo* pinfo = Find(addr);
+
+    // if not found, bail out
+    if (!pinfo)
+        return CAddrInfo();
+
+    CAddrInfo& info = *pinfo;
+
+    // check whether we are talking about the exact same CService (including same port)
+    if (info != addr)
+        return CAddrInfo();
+
+    return *pinfo;
+}
+
 std::vector<bool> CAddrMan::DecodeAsmap(fs::path path)
 {
     std::vector<bool> bits;

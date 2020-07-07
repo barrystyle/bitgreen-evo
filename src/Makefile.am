@@ -409,6 +409,7 @@ libbitcoin_server_a_SOURCES += \
   rpc/governance.cpp \
   rpc/quorum.cpp \
   rpc/special.cpp \
+  saltedhasher.cpp \
   special/cbtx.cpp \
   special/deterministicmns.cpp \
   special/mnauth.cpp \
@@ -603,6 +604,11 @@ libbitcoin_common_a_SOURCES += \
 libbitcoin_util_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
 libbitcoin_util_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libbitcoin_util_a_SOURCES = \
+  bls/bls_batchverifier.h \
+  bls/bls_ies.cpp \
+  bls/bls_ies.h \
+  bls/bls_worker.cpp \
+  bls/bls_worker.h \
   support/lockedpool.cpp \
   chainparamsbase.cpp \
   clientversion.cpp \

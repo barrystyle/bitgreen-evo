@@ -138,9 +138,14 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxVali
 
         // Extract key from collateral. This only works for P2PK and P2PKH collaterals and will fail for P2SH.
         // Issuer of this ProRegTx must prove ownership with this key by signing the ProRegTx
-        keyForPayloadSig = boost::get<CKeyID>(&collateralTxDest);
-        if (!keyForPayloadSig) {
-            return state.DoS(10, false, REJECT_INVALID, "bad-protx-collateral-pkh");
+        if (auto witness_id = boost::get<WitnessV0KeyHash>(&collateralTxDest)) {	
+            keyForPayloadSig = CKeyID(*witness_id);
+        }	
+        else if (auto key_id = boost::get<PKHash>(&collateralTxDest)) {	
+            keyForPayloadSig = CKeyID(*key_id);
+        }	
+        if (keyForPayloadSig.IsNull()) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-collateral-pkh");
         }
 
         collateralOutpoint = ptx.collateralOutpoint;
@@ -181,8 +186,10 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxVali
 
     if (!keyForPayloadSig.IsNull()) {
         // collateral is not part of this ProRegTx, so we must verify ownership of the collateral
-        if (!CheckStringSig(ptx, keyForPayloadSig, state))
+        if (!CheckStringSig(ptx, keyForPayloadSig, state)) {
+            // pass the state returned by the function above
             return false;
+        }
     } else {
         // collateral is part of this ProRegTx, so we know the collateral is owned by the issuer
         if (!ptx.vchSig.empty())

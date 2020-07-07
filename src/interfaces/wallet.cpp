@@ -5,8 +5,10 @@
 #include <interfaces/wallet.h>
 
 #include <amount.h>
+#include <consensus/validation.h>
 #include <interfaces/chain.h>
 #include <interfaces/handler.h>
+#include <policy/feerate.h>
 #include <policy/fees.h>
 #include <primitives/transaction.h>
 #include <script/standard.h>
@@ -72,6 +74,8 @@ WalletTxStatus MakeWalletTxStatus(interfaces::Chain::Lock& locked_chain, const C
     result.is_abandoned = wtx.isAbandoned();
     result.is_coinbase = wtx.IsCoinBase();
     result.is_in_main_chain = wtx.IsInMainChain();
+    result.is_chain_locked = wtx.IsChainLocked();
+    result.is_locked_instantsend = wtx.IsLockedByInstantSend();
     return result;
 }
 
@@ -222,7 +226,9 @@ public:
         bool sign,
         int& change_pos,
         CAmount& fee,
-        std::string& fail_reason) override
+        std::string& fail_reason,
+        AvailableCoinsType nCoinType,
+        bool fUseInstantSend = false) override
     {
         auto locked_chain = m_wallet->chain().lock();
         LOCK(m_wallet->cs_wallet);
@@ -498,7 +504,14 @@ public:
     {
         return MakeHandler(m_wallet->NotifyCanGetAddressesChanged.connect(fn));
     }
-
+    std::unique_ptr<Handler> handleNotifyISLockReceived(NotifyISLockReceivedFn fn) override
+    {
+        return MakeHandler(m_wallet->NotifyISLockReceived.connect(fn));
+    }
+    std::unique_ptr<Handler> handleChainLockReceived(ChainLockReceivedFn fn) override
+    {
+        return MakeHandler(m_wallet->NotifyChainLockReceived.connect(fn));
+    }
     std::shared_ptr<CWallet> m_wallet;
 };
 

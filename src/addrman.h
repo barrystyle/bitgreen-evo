@@ -269,6 +269,9 @@ protected:
     //! Update an entry's service bits.
     void SetServices_(const CService &addr, ServiceFlags nServices) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
+    //! Get address info for address
+    CAddrInfo GetAddressInfo_(const CService& addr);
+
 public:
     // Compressed IP->ASN mapping, loaded from a file when a node starts.
     // Should be always empty if no file was provided.
@@ -667,6 +670,17 @@ public:
         Check();
     }
 
+    CAddrInfo GetAddressInfo(const CService& addr)
+    {
+        CAddrInfo addrRet;
+        {
+            LOCK(cs);
+            Check();
+            addrRet = GetAddressInfo_(addr);
+            Check();
+        }
+        return addrRet;
+    }
 };
 
 #endif // BITCOIN_ADDRMAN_H

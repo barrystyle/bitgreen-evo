@@ -31,6 +31,11 @@ std::string CChainLockSig::ToString() const
     return strprintf("CChainLockSig(nHeight=%d, blockHash=%s)", nHeight, blockHash.ToString());
 }
 
+CChainLocksHandler::CChainLocksHandler(CScheduler* _scheduler) :
+    scheduler(_scheduler)
+{
+}
+
 CChainLocksHandler::~CChainLocksHandler()
 {
 }
@@ -43,8 +48,7 @@ void CChainLocksHandler::Start()
         EnforceBestChainLock();
         // regularly retry signing the current chaintip as it might have failed before due to missing ixlocks
         TrySignChainTip();
-    },
-        (std::chrono::milliseconds)5000);
+    }, std::chrono::seconds{5});
 }
 
 void CChainLocksHandler::Stop()
@@ -155,8 +159,7 @@ void CChainLocksHandler::ProcessNewChainLock(NodeId from, const llmq::CChainLock
     scheduler->scheduleFromNow([&]() {
         CheckActiveState();
         EnforceBestChainLock();
-    },
-        (std::chrono::milliseconds)0);
+    }, std::chrono::seconds{0});
 
     LogPrint(BCLog::CHAINLOCKS, "CChainLocksHandler::%s -- processed new CLSIG (%s), peer=%d\n",
         __func__, clsig.ToString(), from);
@@ -200,8 +203,7 @@ void CChainLocksHandler::UpdatedBlockTip(const CBlockIndex* pindexNew)
         TrySignChainTip();
         LOCK(cs);
         tryLockChainTipScheduled = false;
-    },
-        (std::chrono::milliseconds)0);
+    }, std::chrono::seconds{0});
 }
 
 void CChainLocksHandler::CheckActiveState()

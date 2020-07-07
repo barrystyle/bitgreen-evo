@@ -71,7 +71,7 @@
 // Application startup time (used for uptime calculation)
 const int64_t nStartupTime = GetTime();
 
-const char * const BITGREEN_CONF_FILENAME = "bitgreen.conf";
+const char * const BITCOIN_CONF_FILENAME = "bitgreen.conf";
 
 ArgsManager gArgs;
 

@@ -38,8 +38,6 @@ void SetMockTime(int64_t nMockTimeIn);
 /** For testing */
 int64_t GetMockTime();
 
-void MilliSleep(int64_t n);
-
 /** Return system time (or mocked time, if set) */
 template <typename T>
 T GetTime();
@@ -51,5 +49,6 @@ T GetTime();
 std::string FormatISO8601DateTime(int64_t nTime);
 std::string FormatISO8601Date(int64_t nTime);
 int64_t ParseISO8601DateTime(const std::string& str);
+void MilliSleep(int64_t n);
 
 #endif // BITCOIN_UTIL_TIME_H

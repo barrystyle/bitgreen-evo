@@ -27,6 +27,7 @@ class Coin;
 class RPCTimerInterface;
 class UniValue;
 class proxyType;
+class CDeterministicMNList;
 struct CNodeStateStats;
 struct NodeContext;
 enum class WalletCreationStatus;
@@ -257,7 +258,12 @@ public:
     virtual std::unique_ptr<Handler> handleNotifyHeaderTip(NotifyHeaderTipFn fn) = 0;
 
     //! Return pointer to internal chain interface, useful for testing.
-    virtual NodeContext* context() { return nullptr; }
+    using NotifyAdditionalDataSyncProgressChangedFn = std::function<void(double nProgress)>;
+    virtual std::unique_ptr<Handler> handleNotifyAdditionalDataSyncProgressChanged(NotifyAdditionalDataSyncProgressChangedFn fn) = 0;
+
+    using NotifyMasternodeListChangedFn =
+        std::function<void(const CDeterministicMNList& newList)>;
+    virtual std::unique_ptr<Handler> handleNotifyMasternodeListChanged(NotifyMasternodeListChangedFn fn) = 0;
 };
 
 //! Return implementation of Node interface.

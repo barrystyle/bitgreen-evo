@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 The Bitcoin Core developers
+// Copyright (c) 2018 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -6,6 +6,8 @@
 #include <config/bitcoin-config.h>
 #endif
 
+#include <atomic>
+#include <map>
 #include <thread>
 
 #if (defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__))
@@ -13,6 +15,10 @@
 #include <pthread_np.h>
 #endif
 
+#include <ctpl.h>
+#include <logging.h>
+#include <tinyformat.h>
+#include <util/time.h>
 #include <util/threadnames.h>
 
 #ifdef HAVE_SYS_PRCTL_H
@@ -64,6 +70,7 @@ void util::ThreadSetInternalName(std::string&& name)
 {
     SetInternalName(std::move(name));
 }
+
 
 void RenameThreadPool(ctpl::thread_pool& tp, const char* baseName)
 {
