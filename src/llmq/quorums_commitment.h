@@ -113,7 +113,7 @@ public:
     void ToJson(UniValue& obj) const;
 };
 
-bool CheckLLMQCommitment(const CTransaction& tx, const CBlockIndex* pindexPrev, BlockValidationState& state);
+bool CheckLLMQCommitment(const CTransaction& tx, const CBlockIndex* pindexPrev, TxValidationState& state);
 
 }
 

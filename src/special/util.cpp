@@ -10,7 +10,7 @@
 bool GetUTXOCoin(const COutPoint& outpoint, Coin& coin)
 {
     LOCK(cs_main);
-    if (!pcoinsTip->GetCoin(outpoint, coin))
+    if (!::ChainstateActive().CoinsTip().GetCoin(outpoint, coin))
         return false;
     if (coin.IsSpent())
         return false;

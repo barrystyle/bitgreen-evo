@@ -19,7 +19,7 @@
 #include <llmq/quorums_blockprocessor.h>
 
 
-bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindexPrev, BlockValidationState& state)
+bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxValidationState& state)
 {
     if (tx.nVersion < 2 || tx.nType == TRANSACTION_NORMAL || tx.nType == TRANSACTION_STAKE)
         return true;
@@ -39,10 +39,10 @@ bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindexPrev, Block
         return llmq::CheckLLMQCommitment(tx, pindexPrev, state);
     }
 
-    return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-tx-type-check");
+    return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-tx-type-check");
 }
 
-bool ProcessSpecialTx(const CTransaction& tx, const CBlockIndex* pindex, BlockValidationState& state)
+bool ProcessSpecialTx(const CTransaction& tx, const CBlockIndex* pindex, TxValidationState& state)
 {
     if (tx.nVersion < 2 || tx.nType == TRANSACTION_NORMAL || tx.nType == TRANSACTION_STAKE)
         return true;
@@ -59,7 +59,7 @@ bool ProcessSpecialTx(const CTransaction& tx, const CBlockIndex* pindex, BlockVa
         return true; // handled per block
     }
 
-    return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-tx-type-proc");
+    return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-tx-type-proc");
 }
 
 bool UndoSpecialTx(const CTransaction& tx, const CBlockIndex* pindex)
@@ -82,7 +82,7 @@ bool UndoSpecialTx(const CTransaction& tx, const CBlockIndex* pindex)
     return false;
 }
 
-bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, BlockValidationState& state, bool fJustCheck, bool fCheckCbTxMerleRoots)
+bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, TxValidationState& state, bool fJustCheck, bool fCheckCbTxMerleRoots)
 {
     static int64_t nTimeLoop = 0;
     static int64_t nTimeQuorum = 0;

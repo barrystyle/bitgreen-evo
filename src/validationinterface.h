@@ -220,14 +220,14 @@ public:
     void NotifyChainLock(const CBlockIndex*);
     void NotifyGovernanceObject(const CGovernanceObject&);
     void NotifyGovernanceVote(const CGovernanceVote&);
-    void NotifyHeaderTip(const CBlockIndex *, bool fInitialDownload);
-    void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx);
+    void NotifyHeaderTip(const CBlockIndex *, bool);
+    void NotifyInstantSendDoubleSpendAttempt(const CTransaction &, const CTransaction &);
     void NotifyMasternodeListChanged(bool, const CDeterministicMNList&, const CDeterministicMNListDiff&);
-    void NotifyTransactionLock(const CTransaction &tx);
-    void SyncTransaction(const CTransaction &tx, const CBlockIndex *pindex, int posInBlock);
+    void NotifyTransactionLock(const CTransaction&);
+    void SyncTransaction(const CTransaction&, const CBlockIndex *, int);
     void TransactionAddedToMempool(const CTransactionRef &);
     void TransactionRemovedFromMempool(const CTransactionRef &);
-    void UpdatedBlockTip(const CBlockIndex *, const CBlockIndex *, bool fInitialDownload);
+    void UpdatedBlockTip(const CBlockIndex *, const CBlockIndex *, bool);
 };
 
 CMainSignals& GetMainSignals();

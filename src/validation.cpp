@@ -1065,7 +1065,7 @@ bool MemPoolAccept::AcceptSingleTransaction(const CTransactionRef& ptx, ATMPArgs
     if (!Finalize(args, workspace)) return false;
 
     GetMainSignals().TransactionAddedToMempool(ptx);
-    GetMainSignals().SyncTransaction(tx, NULL, CMainSignals::SYNC_TRANSACTION_NOT_IN_BLOCK);
+    // GetMainSignals().SyncTransaction(ptx, NULL, CMainSignals::SYNC_TRANSACTION_NOT_IN_BLOCK);
 
     return true;
 }
@@ -2413,9 +2413,10 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
     int64_t nTime4_2 = GetTimeMicros(); nTimeVerify += nTime4_2 - nTime4_1;
     LogPrint(BCLog::BENCHMARK, "      - IsBlockPayeeValid: %.2fms [%.2fs]\n", MILLI * (nTime4_2 - nTime4_1), nTimeVerify * MICRO);
 
-    if (!ProcessSpecialTxsInBlock(block, pindex, state, fJustCheck, fScriptChecks)) {
+    TxValidationState tx_state;
+    if (!ProcessSpecialTxsInBlock(block, pindex, tx_state, fJustCheck, fScriptChecks)) {
         LogPrintf("%s: ProcessSpecialTxsInBlock for block %s failed with %s\n",
-                    __func__, pindex->GetBlockHash().ToString(), state.ToString());
+                    __func__, pindex->GetBlockHash().ToString(), tx_state.ToString());
         return false;
     }
 
@@ -2754,6 +2755,10 @@ bool CChainState::DisconnectTip(BlockValidationState& state, const CChainParams&
     // Let wallets know transactions went from 1-confirmed to
     // 0-confirmed or conflicted:
     GetMainSignals().BlockDisconnected(pblock, pindexDelete);
+
+    for (const auto& tx : block.vtx) {
+        GetMainSignals().SyncTransaction(*tx, pindexDelete->pprev, CMainSignals::SYNC_TRANSACTION_NOT_IN_BLOCK);
+    }
     return true;
 }
 
@@ -2865,52 +2870,6 @@ bool CChainState::ConnectTip(BlockValidationState& state, const CChainParams& ch
 
     connectTrace.BlockConnected(pindexNew, std::move(pthisBlock));
     return true;
-}
-
-bool DisconnectBlocks(int blocks)
-{
-    LOCK(cs_main);
-
-    BlockValidationState state;
-    const CChainParams& chainparams = Params();
-
-    LogPrintf("DisconnectBlocks -- Got command to replay %d blocks\n", blocks);
-    for(int i = 0; i < blocks; i++) {
-        DisconnectedBlockTransactions disconnectpool;
-        if(!g_chainstate.DisconnectTip(state, chainparams,&disconnectpool) || !state.IsValid()) {
-            // This is likely a fatal error, but keep the mempool consistent,
-            // just in case. Only remove from the mempool in this case.
-            UpdateMempoolForReorg(disconnectpool, false);
-            return false;
-        }
-    }
-    return true;
-}
-
-void ReprocessBlocks(int nBlocks)
-{
-    LOCK(cs_main);
-
-    std::map<uint256, int64_t>::iterator it = mapRejectedBlocks.begin();
-    while(it != mapRejectedBlocks.end()){
-        //use a window twice as large as is usual for the nBlocks we want to reset
-        if((*it).second  > GetTime() - (nBlocks*60*5)) {
-            BlockMap::iterator mi = BlockIndex().find((*it).first);
-            if (mi != BlockIndex().end() && (*mi).second) {
-
-                CBlockIndex* pindex = (*mi).second;
-                LogPrintf("ReprocessBlocks -- %s\n", (*it).first.ToString());
-
-                ResetBlockFailureFlags(pindex);
-            }
-        }
-        ++it;
-    }
-
-    DisconnectBlocks(nBlocks);
-
-    BlockValidationState state;
-    ActivateBestChain(state, Params());
 }
 
 /**
