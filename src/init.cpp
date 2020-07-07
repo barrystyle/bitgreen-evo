@@ -16,6 +16,7 @@
 #include <bls/bls.h>
 #include <chain.h>
 #include <chainparams.h>
+#include <coins.h>
 #include <compat/sanity.h>
 #include <consensus/validation.h>
 #include <flat-database.h>
@@ -1692,7 +1693,7 @@ bool AppInitMain(NodeContext& node)
                 }
 
                 // ReplayBlocks is a no-op if we cleared the coinsviewdb with -reindex or -reindex-chainstate
-                if (!::ChainstateActive().ReplayBlocks(chainparams)) {
+                if (!::ChainstateActive().ReplayBlocks(chainparams, &::ChainstateActive().CoinsDB())) {
                     strLoadError = _("Unable to replay blocks. You will need to rebuild the database using -reindex-chainstate.").translated;
                     break;
                 }

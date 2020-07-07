@@ -119,9 +119,6 @@ std::map<uint256, COrphanTx> mapOrphanTransactions GUARDED_BY(g_cs_orphans);
 
 void EraseOrphansFor(NodeId peer);
 
-/** Increase a node's misbehavior score. */
-void Misbehaving(NodeId nodeid, int howmuch, const std::string& message) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
-
 /** Average delay between local address broadcasts */
 static constexpr std::chrono::hours AVG_LOCAL_ADDRESS_BROADCAST_INTERVAL{24};
 /** Average delay between peer address broadcasts */
@@ -3881,7 +3878,8 @@ public:
 bool PeerLogicValidation::SendMessages(CNode* pto)
 {
     const Consensus::Params& consensusParams = Params().GetConsensus();
-    {
+	{
+
         // Don't send anything until the version handshake is complete
         if (!pto->fSuccessfullyConnected || pto->fDisconnect)
             return true;
@@ -4147,8 +4145,6 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
             }
             pto->vInventoryBlockToSend.clear();
 
-            if (pto->m_tx_relay != nullptr) {
-                LOCK(pto->m_tx_relay->cs_tx_inventory);
                 // Check whether periodic sends should happen
                 bool fSendTrickle = pto->HasPermission(PF_NOBAN);
                 if (pto->m_tx_relay->nNextInvSend < current_time) {
@@ -4377,7 +4373,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
             // were unresponsive in the past.
             // Eventually we should consider disconnecting peers, but this is
             // conservative.
-        if (state.m_tx_download.m_check_expiry_timer <= current_time) {
+            if (state.m_tx_download.m_check_expiry_timer <= current_time) {
                 for (auto it = state.m_tx_download.m_tx_in_flight.begin(); it != state.m_tx_download.m_tx_in_flight.end();) {
                 if (it->second <= current_time - TX_EXPIRY_INTERVAL) {
                         LogPrint(BCLog::NET, "timeout of inflight tx %s from peer=%d\n", it->first.ToString(), pto->GetId());
@@ -4440,51 +4436,49 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                         ++it;
                     }
                 }
-
                 if (!vGetData.empty())
                     connman->PushMessage(pto, msgMaker.Make(NetMsgType::GETDATA, vGetData));
-
-                //
-                // Message: feefilter
-                //
-                // We don't want white listed peers to filter txs to us if we have -whitelistforcerelay
-                if (pto->m_tx_relay != nullptr && pto->nVersion >= FEEFILTER_VERSION && gArgs.GetBoolArg("-feefilter", DEFAULT_FEEFILTER) &&
-                    !pto->HasPermission(PF_FORCERELAY)) {
-                    CAmount currentFilter = m_mempool.GetMinFee(gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000).GetFeePerK();
-                    int64_t timeNow = GetTimeMicros();
-                    if (timeNow > pto->m_tx_relay->nextSendTimeFeeFilter) {
-                        static CFeeRate default_feerate(DEFAULT_MIN_RELAY_TX_FEE);
-                        static FeeFilterRounder filterRounder(default_feerate);
-                        CAmount filterToSend = filterRounder.round(currentFilter);
-                        // We always have a fee filter of at least minRelayTxFee
-                        filterToSend = std::max(filterToSend, ::minRelayTxFee.GetFeePerK());
-                        if (filterToSend != pto->m_tx_relay->lastSentFeeFilter) {
-                            connman->PushMessage(pto, msgMaker.Make(NetMsgType::FEEFILTER, filterToSend));
-                            pto->m_tx_relay->lastSentFeeFilter = filterToSend;
-                        }
-                        pto->m_tx_relay->nextSendTimeFeeFilter = PoissonNextSend(timeNow, AVG_FEEFILTER_BROADCAST_INTERVAL);
-                    }
-                    // If the fee filter has changed substantially and it's still more than MAX_FEEFILTER_CHANGE_DELAY
-                    // until scheduled broadcast, then move the broadcast to within MAX_FEEFILTER_CHANGE_DELAY.
-                    else if (timeNow + MAX_FEEFILTER_CHANGE_DELAY * 1000000 < pto->m_tx_relay->nextSendTimeFeeFilter &&
-                             (currentFilter < 3 * pto->m_tx_relay->lastSentFeeFilter / 4 || currentFilter > 4 * pto->m_tx_relay->lastSentFeeFilter / 3)) {
-                        pto->m_tx_relay->nextSendTimeFeeFilter = timeNow + GetRandInt(MAX_FEEFILTER_CHANGE_DELAY) * 1000000;
-                    }
-                }
             }
-            return true;
+
+            //
+            // Message: feefilter
+            //
+            // We don't want white listed peers to filter txs to us if we have -whitelistforcerelay
+            if (pto->m_tx_relay != nullptr && pto->nVersion >= FEEFILTER_VERSION && gArgs.GetBoolArg("-feefilter", DEFAULT_FEEFILTER) &&
+                !pto->HasPermission(PF_FORCERELAY)) {
+                CAmount currentFilter = m_mempool.GetMinFee(gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000).GetFeePerK();
+                int64_t timeNow = GetTimeMicros();
+                if (timeNow > pto->m_tx_relay->nextSendTimeFeeFilter) {
+                    static CFeeRate default_feerate(DEFAULT_MIN_RELAY_TX_FEE);
+                    static FeeFilterRounder filterRounder(default_feerate);
+                    CAmount filterToSend = filterRounder.round(currentFilter);
+                    // We always have a fee filter of at least minRelayTxFee
+                    filterToSend = std::max(filterToSend, ::minRelayTxFee.GetFeePerK());
+                    if (filterToSend != pto->m_tx_relay->lastSentFeeFilter) {
+                        connman->PushMessage(pto, msgMaker.Make(NetMsgType::FEEFILTER, filterToSend));
+                        pto->m_tx_relay->lastSentFeeFilter = filterToSend;
+                    }
+                    pto->m_tx_relay->nextSendTimeFeeFilter = PoissonNextSend(timeNow, AVG_FEEFILTER_BROADCAST_INTERVAL);
+                }
+                // If the fee filter has changed substantially and it's still more than MAX_FEEFILTER_CHANGE_DELAY
+                // until scheduled broadcast, then move the broadcast to within MAX_FEEFILTER_CHANGE_DELAY.
+                else if (timeNow + MAX_FEEFILTER_CHANGE_DELAY * 1000000 < pto->m_tx_relay->nextSendTimeFeeFilter &&
+                         (currentFilter < 3 * pto->m_tx_relay->lastSentFeeFilter / 4 || currentFilter > 4 * pto->m_tx_relay->lastSentFeeFilter / 3)) {
+                    pto->m_tx_relay->nextSendTimeFeeFilter = timeNow + GetRandInt(MAX_FEEFILTER_CHANGE_DELAY) * 1000000;
+                }
+         }
+	}
+	return true;
+}
+
+class CNetProcessingCleanup
+{
+public:
+    CNetProcessingCleanup() {}
+    ~CNetProcessingCleanup() {
+        // orphan transactions
+        mapOrphanTransactions.clear();
+        mapOrphanTransactionsByPrev.clear();
     }
-
-
-    class CNetProcessingCleanup
-    {
-    public:
-        CNetProcessingCleanup() {}
-        ~CNetProcessingCleanup()
-        {
-            // orphan transactions
-            mapOrphanTransactions.clear();
-            mapOrphanTransactionsByPrev.clear();
-        }
-    };
-    static CNetProcessingCleanup instance_of_cnetprocessingcleanup;
+};
+static CNetProcessingCleanup instance_of_cnetprocessingcleanup;

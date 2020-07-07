@@ -8,13 +8,4 @@
 #include <consensus/validation.h>
 #include <tinyformat.h>
 
-/** Convert CValidationState to a human-readable message for logging */
-std::string FormatStateMessage(const CValidationState &state)
-{
-    return strprintf("%s%s (code %i)",
-        state.GetRejectReason(),
-        state.GetDebugMessage().empty() ? "" : ", "+state.GetDebugMessage(),
-        state.GetRejectCode());
-}
-
 const std::string strMessageMagic = "BitGreen Signed Message:\n";

@@ -246,41 +246,38 @@ void CMainSignals::NewPoWValidBlock(const CBlockIndex *pindex, const std::shared
     m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NewPoWValidBlock(pindex, block); });
 }
 
-void CMainSignals::NotifyChainLock(const CBlockIndex* pindexChainLock)
-{
-    m_internals->NotifyChainLock(pindexChainLock);
+void CMainSignals::NotifyHeaderTip(const CBlockIndex * pindex, bool fInitialDownload) {
+    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyHeaderTip(pindex, fInitialDownload); });
 }
 
-void CMainSignals::NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff)
-{
-    m_internals->NotifyMasternodeListChanged(undo, oldMNList, diff);
+void CMainSignals::AcceptedBlockHeader(const CBlockIndex * pindex) {
+    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.AcceptedBlockHeader(pindex); });
 }
 
-void CMainSignals::SyncTransaction(const CTransaction &tx, const CBlockIndex *pindex, int posInBlock)
-{
-    m_internals->SyncTransaction(tx, pindex, posInBlock);
+void CMainSignals::NotifyGovernanceVote(const CGovernanceVote &vote) {
+    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyGovernanceVote(vote); });
 }
 
-void CMainSignals::AcceptedBlockHeader(const CBlockIndex *pindexNew)
-{
-    m_internals->AcceptedBlockHeader(pindexNew);
+void CMainSignals::NotifyGovernanceObject(const CGovernanceObject &object) {
+     m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyGovernanceObject(object); });
 }
 
-void CMainSignals::NotifyTransactionLock(const CTransaction &tx)
-{
-    m_internals->NotifyTransactionLock(tx);
-}
-void CMainSignals::NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx)
-{
-    m_internals->NotifyInstantSendDoubleSpendAttempt(currentTx, previousTx);
+void CMainSignals::NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff) {
+     m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyMasternodeListChanged(undo, oldMNList, diff); });
 }
 
-void CMainSignals::NotifyGovernanceVote(const CGovernanceVote &vote)
-{
-    m_internals->NotifyGovernanceVote(vote);
+void CMainSignals::NotifyChainLock(const CBlockIndex* pindexChainLock) {
+    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyChainLock(pindexChainLock); });
 }
 
-void CMainSignals::NotifyGovernanceObject(const CGovernanceObject &object)
-{
-    m_internals->NotifyGovernanceObject(object);
+void CMainSignals::SyncTransaction(const CTransaction &tx, const CBlockIndex *pindex, int posInBlock) {
+    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.SyncTransaction(tx, pindex, posInBlock); });
+}
+
+void CMainSignals::NotifyTransactionLock(const CTransaction &tx) {
+    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyTransactionLock(tx); });
+}
+
+void CMainSignals::NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) {
+    m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyInstantSendDoubleSpendAttempt(currentTx, previousTx); });
 }

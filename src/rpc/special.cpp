@@ -284,7 +284,7 @@ static std::string SignAndSendSpecialTx(const CMutableTransaction& tx)
 
         CValidationState state;
         if (!CheckSpecialTx(ctx, ChainActive().Tip(), state)) {
-            throw std::runtime_error(FormatStateMessage(state));
+            throw std::runtime_error(state.ToString());
         }
 
         CDataStream ds(SER_NETWORK, PROTOCOL_VERSION);

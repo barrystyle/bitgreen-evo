@@ -498,7 +498,7 @@ void CChainLocksHandler::EnforceBestChainLock()
 
     BlockValidationState state;
     if (activateNeeded && !ActivateBestChain(state, Params())) {
-        LogPrintf("CChainLocksHandler::%s -- ActivateBestChain failed: %s\n", __func__, FormatStateMessage(state));
+        LogPrintf("CChainLocksHandler::%s -- ActivateBestChain failed: %s\n", __func__, state.ToString());
     }
 
     const CBlockIndex* pindexNotify = nullptr;
@@ -555,7 +555,7 @@ void CChainLocksHandler::DoInvalidateBlock(const CBlockIndex* pindex, bool activ
 
         BlockValidationState state;
         if (!InvalidateBlock(state, params, pindex2)) {
-            LogPrintf("CChainLocksHandler::%s -- InvalidateBlock failed: %s\n", __func__, FormatStateMessage(state));
+            LogPrintf("CChainLocksHandler::%s -- InvalidateBlock failed: %s\n", __func__, state.ToString());
             // This should not have happened and we are in a state were it's not safe to continue anymore
             assert(false);
         }
@@ -563,7 +563,7 @@ void CChainLocksHandler::DoInvalidateBlock(const CBlockIndex* pindex, bool activ
 
     BlockValidationState state;
     if (activateBestChain && !ActivateBestChain(state, params)) {
-        LogPrintf("CChainLocksHandler::%s -- ActivateBestChain failed: %s\n", __func__, FormatStateMessage(state));
+        LogPrintf("CChainLocksHandler::%s -- ActivateBestChain failed: %s\n", __func__, state.ToString());
         // This should not have happened and we are in a state were it's not safe to continue anymore
         assert(false);
     }

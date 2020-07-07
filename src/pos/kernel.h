@@ -12,7 +12,6 @@ class CBlock;
 class CBlockHeader;
 class COutPoint;
 class CBlockIndex;
-class CValidationState;
 
 // MODIFIER_INTERVAL_RATIO:
 // ratio of group interval length between the last group and the first group
