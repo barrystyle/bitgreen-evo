@@ -17,32 +17,32 @@
 #include <univalue.h>
 #include <validation.h>
 
-bool CheckCbTx(const CTransaction& tx, const CBlockIndex* pindexPrev, BlockValidationState& state)
+bool CheckCbTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxValidationState& state)
 {
     if (tx.nVersion < 2)
         return true;
 
     if (tx.nType != TRANSACTION_COINBASE)
-        return state.Invalid(BlockValidationReason::BLOCK_CONSENSUS, "bad-cbtx-type");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cbtx-type");
 
     if (!tx.IsCoinBase())
-        return state.Invalid(BlockValidationReason::BLOCK_CONSENSUS, "bad-cbtx-invalid");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cbtx-invalid");
 
     CCbTx cbTx;
     if (!GetTxPayload(tx, cbTx))
-        return state.Invalid(BlockValidationReason::BLOCK_CONSENSUS, "bad-cbtx-payload");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cbtx-payload");
 
     if (cbTx.nVersion == 0 || cbTx.nVersion > CCbTx::CURRENT_VERSION)
-        return state.Invalid(BlockValidationReason::BLOCK_CONSENSUS, "bad-cbtx-version");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cbtx-version");
 
     if (pindexPrev && pindexPrev->nHeight + 1 != cbTx.nHeight)
-        return state.Invalid(BlockValidationReason::BLOCK_CONSENSUS, "bad-cbtx-height");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cbtx-height");
 
     return true;
 }
 
 // This can only be done after the block has been fully processed, as otherwise we won't have the finished MN list
-bool CheckCbTxMerkleRoots(const CBlock& block, const CBlockIndex* pindex, BlockValidationState& state)
+bool CheckCbTxMerkleRoots(const CBlock& block, const CBlockIndex* pindex, TxValidationState& state)
 {
     if (block.vtx[0]->nType != TRANSACTION_COINBASE)
         return true;
@@ -55,7 +55,7 @@ bool CheckCbTxMerkleRoots(const CBlock& block, const CBlockIndex* pindex, BlockV
 
     CCbTx cbTx;
     if (!GetTxPayload(*block.vtx[0], cbTx))
-        return state.Invalid(BlockValidationReason::BLOCK_CONSENSUS, "bad-cbtx-payload");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cbtx-payload");
 
     int64_t nTime2 = GetTimeMicros(); nTimePayload += nTime2 - nTime1;
     LogPrint(BCLog::BENCHMARK, "          - GetTxPayload: %.2fms [%.2fs]\n", 0.001 * (nTime2 - nTime1), nTimePayload * 0.000001);
@@ -63,17 +63,17 @@ bool CheckCbTxMerkleRoots(const CBlock& block, const CBlockIndex* pindex, BlockV
     if (pindex) {
         uint256 calculatedMerkleRoot;
         if (!CalcCbTxMerkleRootMNList(block, pindex->pprev, calculatedMerkleRoot, state))
-            return state.Invalid(BlockValidationReason::BLOCK_CONSENSUS, "bad-cbtx-mnmerkleroot");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cbtx-mnmerkleroot");
         if (calculatedMerkleRoot != cbTx.merkleRootMNList)
-            return state.Invalid(BlockValidationReason::BLOCK_CONSENSUS, "bad-cbtx-mnmerkleroot");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cbtx-mnmerkleroot");
 
         int64_t nTime3 = GetTimeMicros(); nTimeMerkleMNL += nTime3 - nTime2;
         LogPrint(BCLog::BENCHMARK, "          - CalcCbTxMerkleRootMNList: %.2fms [%.2fs]\n", 0.001 * (nTime3 - nTime2), nTimeMerkleMNL * 0.000001);
 
         if (!CalcCbTxMerkleRootQuorums(block, pindex->pprev, calculatedMerkleRoot, state))
-            return state.Invalid(BlockValidationReason::BLOCK_CONSENSUS, "bad-cbtx-quorummerkleroot");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cbtx-quorummerkleroot");
         if (calculatedMerkleRoot != cbTx.merkleRootQuorums)
-            return state.Invalid(BlockValidationReason::BLOCK_CONSENSUS, "bad-cbtx-quorummerkleroot");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cbtx-quorummerkleroot");
 
         int64_t nTime4 = GetTimeMicros(); nTimeMerkleQuorum += nTime4 - nTime3;
         LogPrint(BCLog::BENCHMARK, "          - CalcCbTxMerkleRootQuorums: %.2fms [%.2fs]\n", 0.001 * (nTime4 - nTime3), nTimeMerkleQuorum * 0.000001);
@@ -82,7 +82,7 @@ bool CheckCbTxMerkleRoots(const CBlock& block, const CBlockIndex* pindex, BlockV
     return true;
 }
 
-bool CalcCbTxMerkleRootMNList(const CBlock& block, const CBlockIndex* pindexPrev, uint256& merkleRootRet, BlockValidationState& state)
+bool CalcCbTxMerkleRootMNList(const CBlock& block, const CBlockIndex* pindexPrev, uint256& merkleRootRet, TxValidationState& state)
 {
     LOCK(deterministicMNManager->cs);
 
@@ -126,7 +126,7 @@ bool CalcCbTxMerkleRootMNList(const CBlock& block, const CBlockIndex* pindexPrev
     return !mutated;
 }
 
-bool CalcCbTxMerkleRootQuorums(const CBlock& block, const CBlockIndex* pindexPrev, uint256& merkleRootRet, BlockValidationState& state)
+bool CalcCbTxMerkleRootQuorums(const CBlock& block, const CBlockIndex* pindexPrev, uint256& merkleRootRet, TxValidationState& state)
 {
     static int64_t nTimeMinedAndActive = 0;
     static int64_t nTimeMined = 0;

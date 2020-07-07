@@ -11,6 +11,7 @@
 #include <chainparams.h>
 #include <clientversion.h>
 #include <core_io.h>
+#include <consensus/validation.h>
 #include <hash.h>
 #include <key_io.h>
 #include <messagesigner.h>
@@ -24,22 +25,22 @@ template <typename ProTx>
 static bool CheckService(const uint256& proTxHash, const ProTx& proTx, TxValidationState& state)
 {
     if (!proTx.addr.IsValid())
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-addr");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-addr");
 
    if (Params().NetworkIDString() != CBaseChainParams::REGTEST && !proTx.addr.IsRoutable())
-       return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-addr");
+       return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-addr");
 
     int mainnetDefaultPort = Params().GetDefaultPort();
     if (Params().NetworkIDString() == CBaseChainParams::MAIN) {
         if (proTx.addr.GetPort() != mainnetDefaultPort && !Params().AllowMultiplePorts()) {
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-addr-port");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-addr-port");
         }
     } else if (proTx.addr.GetPort() == mainnetDefaultPort && !Params().AllowMultiplePorts()) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-addr-port");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-addr-port");
     }
 
     if (!proTx.addr.IsIPv4()) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-addr");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-addr");
     }
 
     return true;
@@ -50,7 +51,7 @@ static bool CheckHashSig(const ProTx& proTx, const CKeyID& keyID, TxValidationSt
 {
     std::string strError;
     if (!CHashSigner::VerifyHash(::SerializeHash(proTx), keyID, proTx.vchSig, strError)) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-sig", strError);
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-sig", strError);
     }
     return true;
 }
@@ -60,7 +61,7 @@ static bool CheckStringSig(const ProTx& proTx, const CKeyID& keyID, TxValidation
 {
     std::string strError;
     if (!CMessageSigner::VerifyMessage(keyID, proTx.vchSig, proTx.MakeSignString(), strError)) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-sig", strError);
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-sig", strError);
     }
     return true;
 }
@@ -69,7 +70,7 @@ template <typename ProTx>
 static bool CheckHashSig(const ProTx& proTx, const CBLSPublicKey& pubKey, TxValidationState& state)
 {
     if (!proTx.sig.VerifyInsecure(pubKey, ::SerializeHash(proTx)))
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-sig");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-sig");
     return true;
 }
 
@@ -78,7 +79,7 @@ static bool CheckInputsHash(const CTransaction& tx, const ProTx& proTx, TxValida
 {
     uint256 inputsHash = CalcTxInputsHash(tx);
     if (inputsHash != proTx.inputsHash) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-inputs-hash");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-inputs-hash");
     }
 
     return true;
@@ -87,31 +88,31 @@ static bool CheckInputsHash(const CTransaction& tx, const ProTx& proTx, TxValida
 bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxValidationState& state)
 {
     if (tx.nType != TRANSACTION_PROVIDER_REGISTER)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-type");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-type");
 
     CProRegTx ptx;
     if (!GetTxPayload(tx, ptx))
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-payload");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-payload");
 
     if (ptx.nVersion == 0 || ptx.nVersion > CProRegTx::CURRENT_VERSION)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-version");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-version");
     if (ptx.nType != 0)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-type");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-type");
     if (ptx.nMode != 0)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-mode");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-mode");
     if (ptx.keyIDOwner.IsNull() || !ptx.pubKeyOperator.IsValid() || ptx.keyIDVoting.IsNull())
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-key-null");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-key-null");
     if (!ptx.scriptPayout.IsPayToScriptHash())
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-payee");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-payee");
 
     CTxDestination payoutDest;
     // should not happen as we checked script types before
     if (!ExtractDestination(ptx.scriptPayout, payoutDest))
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-payee-dest");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-payee-dest");
 
     // don't allow reuse of payout key for other keys (don't allow people to put the payee key onto an online server)
     if (payoutDest == CTxDestination(PKHash(ptx.keyIDOwner)) || payoutDest == CTxDestination(PKHash(ptx.keyIDVoting)))
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-payee-reuse");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-payee-reuse");
 
     // It's allowed to set addr to 0, which will put the MN into PoSe-banned state and require a ProUpServTx to be issues later
     // If any of both is set, it must be valid however
@@ -119,7 +120,7 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxVali
         return false;
 
     if (ptx.nOperatorReward > 10000)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-operator-reward");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-operator-reward");
 
     CTxDestination collateralTxDest;
     CKeyID keyForPayloadSig;
@@ -127,32 +128,33 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxVali
 
     if (!ptx.collateralOutpoint.hash.IsNull()) {
         Coin coin;
-        if (!GetUTXOCoin(ptx.collateralOutpoint, coin) || coin.out.nValue != 2500 * COIN)
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-collateral");
-        if (!ExtractDestination(coin.out.scriptPubKey, collateralTxDest))
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-collateral-dest");
+        if (!GetUTXOCoin(ptx.collateralOutpoint, coin) || coin.out.nValue != 2500 * COIN) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-collateral");
+        }
 
-        if (!GetWallets().front())
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-wallet");
-
-        CWallet* const pwallet = GetWallets().front().get();
+        if (!ExtractDestination(coin.out.scriptPubKey, collateralTxDest)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-collateral-dest");
+        }
 
         // Extract key from collateral. This only works for P2PK and P2PKH collaterals and will fail for P2SH.
         // Issuer of this ProRegTx must prove ownership with this key by signing the ProRegTx
-        keyForPayloadSig = GetKeyForDestination(*pwallet, collateralTxDest);
-        if (keyForPayloadSig.IsNull())
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-collateral-pkh");
+        keyForPayloadSig = boost::get<CKeyID>(&collateralTxDest);
+        if (!keyForPayloadSig) {
+            return state.DoS(10, false, REJECT_INVALID, "bad-protx-collateral-pkh");
+        }
 
         collateralOutpoint = ptx.collateralOutpoint;
     } else {
-        if (ptx.collateralOutpoint.n >= tx.vout.size())
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID,
-                                 "bad-protx-collateral-index");
-        if (tx.vout[ptx.collateralOutpoint.n].nValue != 2500 * COIN)
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-collateral");
-        if (!ExtractDestination(tx.vout[ptx.collateralOutpoint.n].scriptPubKey, collateralTxDest))
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID,
-                                 "bad-protx-collateral-dest");
+        if (ptx.collateralOutpoint.n >= tx.vout.size()) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-collateral-index");
+        }
+        if (tx.vout[ptx.collateralOutpoint.n].nValue != 2500 * COIN) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-collateral");
+        }
+
+        if (!ExtractDestination(tx.vout[ptx.collateralOutpoint.n].scriptPubKey, collateralTxDest)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-collateral-dest");    
+        }                             
 
         collateralOutpoint = COutPoint(tx.GetHash(), ptx.collateralOutpoint.n);
     }
@@ -160,18 +162,18 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxVali
     // don't allow reuse of collateral key for other keys (don't allow people to put the collateral key onto an online server)
     // this check applies to internal and external collateral, but internal collaterals are not necessarely a P2PKH
     if (collateralTxDest == CTxDestination(PKHash(ptx.keyIDOwner)) || collateralTxDest == CTxDestination(PKHash(ptx.keyIDVoting)))
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-collateral-reuse");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-collateral-reuse");
 
     if (pindexPrev) {
         auto mnList = deterministicMNManager->GetListForBlock(pindexPrev);
 
         // only allow reusing of addresses when it's for the same collateral (which replaces the old MN)
         if (mnList.HasUniqueProperty(ptx.addr) && mnList.GetUniquePropertyMN(ptx.addr)->collateralOutpoint != collateralOutpoint)
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_DUPLICATE, "bad-protx-dup-addr");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-dup-addr");
 
         // never allow duplicate keys, even if this ProTx would replace an existing MN
         if (mnList.HasUniqueProperty(ptx.keyIDOwner) || mnList.HasUniqueProperty(ptx.pubKeyOperator))
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_DUPLICATE, "bad-protx-dup-key");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-dup-key");
     }
 
     if (!CheckInputsHash(tx, ptx, state))
@@ -184,7 +186,7 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxVali
     } else {
         // collateral is part of this ProRegTx, so we know the collateral is owned by the issuer
         if (!ptx.vchSig.empty())
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-sig");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-sig");
     }
 
     return true;
@@ -193,16 +195,16 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxVali
 bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxValidationState& state)
 {
     if (tx.nType != TRANSACTION_PROVIDER_UPDATE_SERVICE) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-type");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-type");
     }
 
     CProUpServTx ptx;
     if (!GetTxPayload(tx, ptx)) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-payload");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-payload");
     }
 
     if (ptx.nVersion == 0 || ptx.nVersion > CProRegTx::CURRENT_VERSION) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-version");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-version");
     }
 
     if (!CheckService(ptx.proTxHash, ptx, state)) {
@@ -213,20 +215,20 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxV
         auto mnList = deterministicMNManager->GetListForBlock(pindexPrev);
         auto mn = mnList.GetMN(ptx.proTxHash);
         if (!mn) {
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-hash");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-hash");
         }
 
         // don't allow updating to addresses already used by other MNs
         if (mnList.HasUniqueProperty(ptx.addr) && mnList.GetUniquePropertyMN(ptx.addr)->proTxHash != ptx.proTxHash) {
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_DUPLICATE, "bad-protx-dup-addr");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-dup-addr");
         }
 
         if (ptx.scriptOperatorPayout != CScript()) {
             //    don't allow to set operator reward payee in case no operatorReward was set
             if (mn->nOperatorReward == 0)
-                return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-operator-payee");
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-operator-payee");
             if (!ptx.scriptOperatorPayout.IsPayToScriptHash())
-                return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-operator-payee");
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-operator-payee");
         }
 
         // we can only check the signature if pindexPrev != NULL and the MN is known
@@ -242,56 +244,56 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxV
 bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxValidationState& state)
 {
     if (tx.nType != TRANSACTION_PROVIDER_UPDATE_REGISTRAR)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-type");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-type");
 
     CProUpRegTx ptx;
     if (!GetTxPayload(tx, ptx))
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-payload");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-payload");
 
     if (ptx.nVersion == 0 || ptx.nVersion > CProRegTx::CURRENT_VERSION)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-version");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-version");
     if (ptx.nMode != 0)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-mode");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-mode");
 
     if (!ptx.pubKeyOperator.IsValid() || ptx.keyIDVoting.IsNull())
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-key-null");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-key-null");
     if (!ptx.scriptPayout.IsPayToScriptHash())
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-payee");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-payee");
 
     CTxDestination payoutDest;
     if (!ExtractDestination(ptx.scriptPayout, payoutDest)) {
         // should not happen as we checked script types before
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-payee-dest");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-payee-dest");
     }
 
     if (pindexPrev) {
         auto mnList = deterministicMNManager->GetListForBlock(pindexPrev);
         auto dmn = mnList.GetMN(ptx.proTxHash);
         if (!dmn)
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-hash");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-hash");
 
         // don't allow reuse of payee key for other keys (don't allow people to put the payee key onto an online server)
         if (payoutDest == CTxDestination(PKHash(dmn->pdmnState->keyIDOwner)) || payoutDest == CTxDestination(PKHash(ptx.keyIDVoting)))
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-payee-reuse");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-payee-reuse");
 
         Coin coin;
         if (!GetUTXOCoin(dmn->collateralOutpoint, coin)) {
             // this should never happen (there would be no dmn otherwise)
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-collateral");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-collateral");
         }
 
         // don't allow reuse of collateral key for other keys (don't allow people to put the collateral key onto an online server)
         CTxDestination collateralTxDest;
         if (!ExtractDestination(coin.out.scriptPubKey, collateralTxDest))
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-collateral-dest");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-collateral-dest");
 
         if (collateralTxDest == CTxDestination(PKHash(dmn->pdmnState->keyIDOwner)) || collateralTxDest == CTxDestination(PKHash(ptx.keyIDVoting)))
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-collateral-reuse");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-collateral-reuse");
 
         if (mnList.HasUniqueProperty(ptx.pubKeyOperator)) {
             auto otherDmn = mnList.GetUniquePropertyMN(ptx.pubKeyOperator);
             if (ptx.proTxHash != otherDmn->proTxHash)
-                return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_DUPLICATE, "bad-protx-dup-key");
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-dup-key");
         }
 
         if (!CheckInputsHash(tx, ptx, state))
@@ -306,25 +308,25 @@ bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxVa
 bool CheckProUpRevTx(const CTransaction& tx, const CBlockIndex* pindexPrev, TxValidationState& state)
 {
     if (tx.nType != TRANSACTION_PROVIDER_UPDATE_REVOKE)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-type");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-type");
 
     CProUpRevTx ptx;
     if (!GetTxPayload(tx, ptx))
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-payload");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-payload");
 
     if (ptx.nVersion == 0 || ptx.nVersion > CProRegTx::CURRENT_VERSION)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-version");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-version");
 
     // ptx.nReason < CProUpRevTx::REASON_NOT_SPECIFIED is always `false` since
     // ptx.nReason is unsigned and CProUpRevTx::REASON_NOT_SPECIFIED == 0
     if (ptx.nReason > CProUpRevTx::REASON_LAST)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-reason");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-reason");
 
     if (pindexPrev) {
         auto mnList = deterministicMNManager->GetListForBlock(pindexPrev);
         auto dmn = mnList.GetMN(ptx.proTxHash);
         if (!dmn)
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-protx-hash");
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-protx-hash");
 
         if (!CheckInputsHash(tx, ptx, state))
             return false;

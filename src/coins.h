@@ -71,7 +71,7 @@ public:
         assert(!IsSpent());
         uint32_t code = nHeight * 2 + fCoinBase;
         ::Serialize(s, VARINT(code));
-        ::Serialize(s, REF(out));
+        ::Serialize(s, CTxOutCompressor(REF(out)));
         // proof-of-stake flag
         unsigned int nFlag = fCoinStake ? 1 : 0;
         ::Serialize(s, VARINT(nFlag));
@@ -83,7 +83,7 @@ public:
         ::Unserialize(s, VARINT(code));
         nHeight = code >> 1;
         fCoinBase = code & 1;
-        ::Unserialize(s, out);
+        ::Unserialize(s, CTxOutCompressor(out));
         // proof-of-stake flag
         unsigned int nFlag = 0;
         ::Unserialize(s, VARINT(nFlag));
@@ -121,7 +121,7 @@ public:
      *
      * @see https://gcc.gnu.org/onlinedocs/gcc-9.2.0/libstdc++/manual/manual/unordered_associative.html
      */
-    size_t operator()(const COutPoint& id) const noexcept {
+    size_t operator()(const COutPoint& id) const {
         return SipHashUint256Extra(k0, k1, id.hash, id.n);
     }
 };

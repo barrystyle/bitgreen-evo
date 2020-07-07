@@ -750,6 +750,15 @@ bool WalletBatch::EraseDestData(const std::string &address, const std::string &k
     return EraseIC(std::make_pair(DBKeys::DESTDATA, std::make_pair(address, key)));
 }
 
+bool WalletBatch::WriteStakeSplitThreshold(const int nStakeSplitThreshold)
+{
+    return WriteIC(std::string("stakest"), nStakeSplitThreshold);
+}
+
+bool WalletBatch::WriteStakeCombineThreshold(const int nStakeCombineThreshold)
+{
+    return WriteIC(std::string("stakect"), nStakeCombineThreshold);
+}
 
 bool WalletBatch::WriteHDChain(const CHDChain& chain)
 {

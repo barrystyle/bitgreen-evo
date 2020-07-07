@@ -22,7 +22,7 @@ bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
     if (::GetSerializeSize(tx, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT)
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-oversize");
     if (tx.vExtraPayload.size() > MAX_TX_EXTRA_PAYLOAD)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-txns-payload-oversize");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-payload-oversize");
 
     // check transaction types
     if (tx.nVersion >= 2 &&
@@ -33,9 +33,9 @@ bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
         tx.nType != TRANSACTION_PROVIDER_UPDATE_REVOKE &&
         tx.nType != TRANSACTION_QUORUM_COMMITMENT &&
         tx.nType != TRANSACTION_STAKE)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-txns-type");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-type");
     if (tx.IsCoinBase() && tx.nVersion >= 2 && tx.nType != TRANSACTION_COINBASE)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-txns-cb-type");
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-cb-type");
 
     // Check for negative or overflow output values (see CVE-2010-5139)
     CAmount nValueOut = 0;
