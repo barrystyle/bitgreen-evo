@@ -7,12 +7,10 @@
 
 #include <validationinterface.h>
 
-class CBlockIndex;
-
 class CMNNotificationInterface : public CValidationInterface
 {
 public:
-    CMNNotificationInterface(CConnman& connmanIn): connman(connmanIn) {}
+    explicit CMNNotificationInterface(CConnman& connmanIn): connman(connmanIn) {}
     virtual ~CMNNotificationInterface() = default;
 
     // a small helper to initialize current block height in sub-modules on startup
@@ -20,12 +18,14 @@ public:
 
 protected:
     // CValidationInterface
-    void AcceptedBlockHeader(const CBlockIndex *pindexNew) ;
-    void NotifyHeaderTip(const CBlockIndex *pindexNew, bool fInitialDownload) ;
-    void UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload) ;
-    void SyncTransaction(const CTransaction &tx, const CBlockIndex *pindex, int posInBlock) ;
-    void NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff) ;
-    void NotifyChainLock(const CBlockIndex* pindex) ;
+    void AcceptedBlockHeader(const CBlockIndex *pindexNew) override;
+    void NotifyHeaderTip(const CBlockIndex *pindexNew, bool fInitialDownload) override;
+    void SynchronousUpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload) override;
+    void UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload) override;
+    void BlockConnected(const std::shared_ptr<const CBlock>& pblock, const CBlockIndex* pindex) override;
+    void BlockDisconnected(const std::shared_ptr<const CBlock>& pblock, const CBlockIndex* pindexDisconnected) override;
+    void NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff) override;
+    void NotifyChainLock(const CBlockIndex* pindex) override;
 
 private:
     CConnman& connman;

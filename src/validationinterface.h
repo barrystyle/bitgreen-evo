@@ -96,6 +96,10 @@ protected:
      */
     virtual void UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload) {}
     /**
+     * Same as UpdatedBlockTip, but called from the caller's thread
+     */
+    virtual void SynchronousUpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload) {}
+    /**
      * Notifies listeners of a transaction having been added to mempool.
      *
      * Called on a background thread.
@@ -228,6 +232,7 @@ public:
     void TransactionAddedToMempool(const CTransactionRef &);
     void TransactionRemovedFromMempool(const CTransactionRef &);
     void UpdatedBlockTip(const CBlockIndex *, const CBlockIndex *, bool);
+    void SynchronousUpdatedBlockTip(const CBlockIndex *, const CBlockIndex *, bool fInitialDownload);
 };
 
 CMainSignals& GetMainSignals();

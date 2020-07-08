@@ -101,7 +101,6 @@ static const bool DEFAULT_PROXYRANDOMIZE = true;
 static const bool DEFAULT_REST_ENABLE = false;
 static const bool DEFAULT_STOPAFTERBLOCKIMPORT = false;
 
-std::unique_ptr<CConnman> g_connman;
 std::unique_ptr<PeerLogicValidation> peerLogic;
 std::unique_ptr<BanMan> g_banman;
 
@@ -456,9 +455,6 @@ void SetupServerArgs()
         -GetNumCores(), MAX_SCRIPTCHECK_THREADS, DEFAULT_SCRIPTCHECK_THREADS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-persistmempool", strprintf("Whether to save the mempool on shutdown and load on restart (default: %u)", DEFAULT_PERSIST_MEMPOOL), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-pid=<file>", strprintf("Specify pid file. Relative paths will be prefixed by a net-specific datadir location. (default: %s)", BITCOIN_PID_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    gArgs.AddArg("-prune=<n>", strprintf("Reduce storage requirements by enabling pruning (deleting) of old blocks. This allows the pruneblockchain RPC to be called to delete specific blocks, and enables automatic pruning of old blocks if a target size in MiB is provided. This mode is incompatible with -txindex and -rescan. "
-            "Warning: Reverting this setting requires re-downloading the entire blockchain. "
-            "(default: 0 = disable pruning blocks, 1 = allow manual pruning via RPC, >=%u = automatically prune block files to stay under the specified target size in MiB)", MIN_DISK_SPACE_FOR_BLOCK_FILES / 1024 / 1024), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-reindex", "Rebuild chain state and block index from the blk*.dat files on disk", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-reindex-chainstate", "Rebuild chain state from the currently indexed blocks. When in pruning mode or if blocks on disk might be corrupted, use full -reindex instead.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
 #ifndef WIN32
@@ -704,47 +700,6 @@ struct CImportingNow
 };
 
 
-// If we're using -prune with -reindex, then delete block files that will be ignored by the
-// reindex.  Since reindexing works by starting at block file 0 and looping until a blockfile
-// is missing, do the same here to delete any later block files after a gap.  Also delete all
-// rev files since they'll be rewritten by the reindex anyway.  This ensures that vinfoBlockFile
-// is in sync with what's actually on disk by the time we start downloading, so that pruning
-// works correctly.
-static void CleanupBlockRevFiles()
-{
-    std::map<std::string, fs::path> mapBlockFiles;
-
-    // Glob all blk?????.dat and rev?????.dat files from the blocks directory.
-    // Remove the rev files immediately and insert the blk file paths into an
-    // ordered map keyed by block file index.
-    LogPrintf("Removing unusable blk?????.dat and rev?????.dat files for -reindex with -prune\n");
-    fs::path blocksdir = GetBlocksDir();
-    for (fs::directory_iterator it(blocksdir); it != fs::directory_iterator(); it++) {
-        if (fs::is_regular_file(*it) &&
-            it->path().filename().string().length() == 12 &&
-            it->path().filename().string().substr(8,4) == ".dat")
-        {
-            if (it->path().filename().string().substr(0,3) == "blk")
-                mapBlockFiles[it->path().filename().string().substr(3,5)] = it->path();
-            else if (it->path().filename().string().substr(0,3) == "rev")
-                remove(it->path());
-        }
-    }
-
-    // Remove all block files that aren't part of a contiguous set starting at
-    // zero by walking the ordered map (keys are block file indices) by
-    // keeping a separate counter.  Once we hit a gap (or if 0 doesn't exist)
-    // start removing block files.
-    int nContigCounter = 0;
-    for (const std::pair<const std::string, fs::path>& item : mapBlockFiles) {
-        if (atoi(item.first) == nContigCounter) {
-            nContigCounter++;
-            continue;
-        }
-        remove(item.second);
-    }
-}
-
 static void ThreadImport(std::vector<fs::path> vImportFiles)
 {
     const CChainParams& chainparams = Params();
@@ -808,7 +763,12 @@ static void ThreadImport(std::vector<fs::path> vImportFiles)
 
     if (fMasternodeMode) {
         assert(activeMasternodeManager);
-        activeMasternodeManager->Init();
+        const CBlockIndex* pindexTip;
+        {
+            LOCK(cs_main);
+            pindexTip = ::ChainActive().Tip();
+        }
+        activeMasternodeManager->Init(pindexTip);
     }
 
 #ifdef ENABLE_WALLET
@@ -1057,15 +1017,6 @@ bool AppInitParameterInteraction()
         }
     }
 
-    // if using block pruning, then disallow txindex
-    if (gArgs.GetArg("-prune", 0)) {
-        if (gArgs.GetBoolArg("-txindex", DEFAULT_TXINDEX))
-            return InitError(_("Prune mode is incompatible with -txindex.").translated);
-        if (!g_enabled_filter_types.empty()) {
-            return InitError(_("Prune mode is incompatible with -blockfilterindex.").translated);
-        }
-    }
-
     // -bind and -whitebind can't be set when not listening
     size_t nUserBind = gArgs.GetArgs("-bind").size() + gArgs.GetArgs("-whitebind").size();
     if (nUserBind != 0 && !gArgs.GetBoolArg("-listen", DEFAULT_LISTEN)) {
@@ -1156,24 +1107,6 @@ bool AppInitParameterInteraction()
         if (!ParseMoney(gArgs.GetArg("-incrementalrelayfee", ""), n))
             return InitError(AmountErrMsg("incrementalrelayfee", gArgs.GetArg("-incrementalrelayfee", "")).translated);
         incrementalRelayFee = CFeeRate(n);
-    }
-
-    // block pruning; get the amount of disk space (in MiB) to allot for block & undo files
-    int64_t nPruneArg = gArgs.GetArg("-prune", 0);
-    if (nPruneArg < 0) {
-        return InitError(_("Prune cannot be configured with a negative value.").translated);
-    }
-    nPruneTarget = (uint64_t) nPruneArg * 1024 * 1024;
-    if (nPruneArg == 1) {  // manual pruning: -prune=1
-        LogPrintf("Block pruning enabled.  Use RPC call pruneblockchain(height) to manually prune block and undo files.\n");
-        nPruneTarget = std::numeric_limits<uint64_t>::max();
-        fPruneMode = true;
-    } else if (nPruneTarget) {
-        if (nPruneTarget < MIN_DISK_SPACE_FOR_BLOCK_FILES) {
-            return InitError(strprintf(_("Prune configured below the minimum of %d MiB.  Please use a higher number.").translated, MIN_DISK_SPACE_FOR_BLOCK_FILES / 1024 / 1024));
-        }
-        LogPrintf("Prune configured to target %u MiB on disk for block and undo files.\n", nPruneTarget / 1024 / 1024);
-        fPruneMode = true;
     }
 
     nConnectTimeout = gArgs.GetArg("-timeout", DEFAULT_CONNECT_TIMEOUT);
@@ -1582,7 +1515,7 @@ bool AppInitMain(NodeContext& node)
         }
     }
 
-    g_mn_notification_interface = new CMNNotificationInterface(*g_connman.get());
+    g_mn_notification_interface = new CMNNotificationInterface(*node.connman);
     RegisterValidationInterface(g_mn_notification_interface);
 
     uint64_t nMaxOutboundLimit = 0; //unlimited unless -maxuploadtarget is set
@@ -1641,9 +1574,11 @@ bool AppInitMain(NodeContext& node)
             const int64_t load_block_index_start_time = GetTimeMillis();
             bool is_coinsview_empty;
             try {
+
                 // This statement makes ::ChainstateActive() usable.
                 g_chainstate = MakeUnique<CChainState>();
                 UnloadBlockIndex();
+
                 // new CBlockTreeDB tries to delete the existing file, which
                 // fails if it's still open from the previous loop. Close it first:
                 pblocktree.reset();
@@ -1651,9 +1586,6 @@ bool AppInitMain(NodeContext& node)
 
                 if (fReset) {
                     pblocktree->WriteReindexing(true);
-                    //If we're reindexing in prune mode, wipe away unusable block files and all undo data files
-                    if (fPruneMode)
-                        CleanupBlockRevFiles();
                 }
 
                 llmq::DestroyLLMQSystem();
@@ -1680,13 +1612,6 @@ bool AppInitMain(NodeContext& node)
                 if (!::BlockIndex().empty() &&
                         !LookupBlockIndex(chainparams.GetConsensus().hashGenesisBlock)) {
                     return InitError(_("Incorrect or no genesis block found. Wrong datadir for network?").translated);
-                }
-
-                // Check for changed -prune state.  What we are concerned about is a user who has pruned blocks
-                // in the past, but is now trying to run unpruned.
-                if (fHavePruned && !fPruneMode) {
-                    strLoadError = _("You need to rebuild the database using -reindex to go back to unpruned mode.  This will redownload the entire blockchain").translated;
-                    break;
                 }
 
                 // At this point blocktree args are consistent with what's on disk.
@@ -1760,10 +1685,6 @@ bool AppInitMain(NodeContext& node)
                 LOCK(cs_main);
                 if (!is_coinsview_empty) {
                     uiInterface.InitMessage(_("Verifying blocks...").translated);
-                    if (fHavePruned && gArgs.GetArg("-checkblocks", DEFAULT_CHECKBLOCKS) > MIN_BLOCKS_TO_KEEP) {
-                        LogPrintf("Prune: pruned datadir may not have more than %d blocks; only checking available blocks\n",
-                            MIN_BLOCKS_TO_KEEP);
-                    }
 
                     CBlockIndex* tip = ::ChainActive().Tip();
                     RPCNotifyBlockChange(true, tip);
@@ -1838,18 +1759,6 @@ bool AppInitMain(NodeContext& node)
 
     // ********************************************************* Step 8-B: check lite mode and load sporks
 
-    // lite mode disables all Dash-specific functionality
-    fLiteMode = gArgs.GetBoolArg("-litemode", false);
-    LogPrintf("fLiteMode %d\n", fLiteMode);
-
-    if (fLiteMode)
-        InitWarning(_("You are starting in lite mode, all BitGreen-specific functionality is disabled.").translated);
-
-    if ((!fLiteMode && !g_txindex)
-       && chainparams.NetworkIDString() != CBaseChainParams::REGTEST) {
-        return InitError(_("Transaction index can't be disabled in full mode. Either start with -litemode command line switch or enable transaction index.").translated);
-    }
-
     if (!fLiteMode) {
         uiInterface.InitMessage(_("Loading sporks cache...").translated);
         CFlatDB<CSporkManager> flatdb6("sporks.dat", "magicSporkCache");
@@ -1868,17 +1777,6 @@ bool AppInitMain(NodeContext& node)
 
     // ********************************************************* Step 10: data directory maintenance
 
-    // if pruning, unset the service bit and perform the initial blockstore prune
-    // after any wallet rescanning has taken place.
-    if (fPruneMode) {
-        LogPrintf("Unsetting NODE_NETWORK on prune mode\n");
-        nLocalServices = ServiceFlags(nLocalServices & ~NODE_NETWORK);
-        if (!fReindex) {
-            uiInterface.InitMessage(_("Pruning blockstore...").translated);
-            ::ChainstateActive().PruneAndFlush();
-        }
-    }
-
     if (chainparams.GetConsensus().SegwitHeight != std::numeric_limits<int>::max()) {
         // Advertise witness capabilities.
         // The option to not set NODE_WITNESS is only used in the tests and should be removed.
@@ -1888,9 +1786,6 @@ bool AppInitMain(NodeContext& node)
     // ********************************************************* Step 10-A: Prepare Masternode related stuff
 
     fMasternodeMode = gArgs.GetBoolArg("-masternode", false);
-
-    if (fLiteMode && fMasternodeMode)
-        return InitError(_("You can not start a masternode in lite mode.").translated);
 
     if(fMasternodeMode) {
         LogPrintf("MASTERNODE MODE:\n");
@@ -1980,13 +1875,11 @@ bool AppInitMain(NodeContext& node)
     }
 
     // ********************************************************* Step 10-C: schedule BitGreen-specific tasks
-    if (!fLiteMode) {
-        node.scheduler->scheduleEvery(boost::bind(&CNetFulfilledRequestManager::DoMaintenance, boost::ref(netfulfilledman)), std::chrono::seconds{60});
-        node.scheduler->scheduleEvery(boost::bind(&CMasternodeSync::DoMaintenance, boost::ref(masternodeSync), boost::ref(*g_connman)), std::chrono::seconds{1});
-        node.scheduler->scheduleEvery(boost::bind(&CGovernanceManager::DoMaintenance, boost::ref(governance), boost::ref(*g_connman)), std::chrono::seconds{300});
-    }
 
-    node.scheduler->scheduleEvery(boost::bind(&CMasternodeUtils::DoMaintenance, boost::ref(*g_connman)), std::chrono::seconds{1});
+    node.scheduler->scheduleEvery(boost::bind(&CNetFulfilledRequestManager::DoMaintenance, boost::ref(netfulfilledman)), std::chrono::seconds{60});
+    node.scheduler->scheduleEvery(boost::bind(&CMasternodeSync::DoMaintenance, boost::ref(masternodeSync), boost::ref(*node.connman)), std::chrono::seconds{1});
+    node.scheduler->scheduleEvery(boost::bind(&CGovernanceManager::DoMaintenance, boost::ref(governance), boost::ref(*node.connman)), std::chrono::seconds{300});
+    node.scheduler->scheduleEvery(boost::bind(&CMasternodeUtils::DoMaintenance, boost::ref(*node.connman)), std::chrono::seconds{1});
 
     llmq::StartLLMQSystem();
 
@@ -2110,6 +2003,7 @@ bool AppInitMain(NodeContext& node)
             connOptions.m_specified_outgoing = connect;
         }
     }
+
     if (!node.connman->Start(*node.scheduler, connOptions)) {
         return false;
     }

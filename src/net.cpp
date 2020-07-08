@@ -49,6 +49,8 @@ static_assert(MINIUPNPC_API_VERSION >= 10, "miniUPnPc API version >= 10 assumed"
 
 #include <math.h>
 
+std::unique_ptr<CConnman> g_connman;
+
 // How often to dump addresses to peers.dat
 static constexpr std::chrono::minutes DUMP_PEERS_INTERVAL{15};
 
@@ -3089,7 +3091,7 @@ bool CConnman::IsMasternodeQuorumNode(const CNode* pnode)
 
 void CConnman::RelayInv(CInv &inv, const int minProtoVersion)
 {
-    g_connman->ForEachNode([&inv, minProtoVersion](CNode* node) {
+    ForEachNode([&inv, minProtoVersion](CNode* node) {
         if (node->nVersion < minProtoVersion) return;
         node->PushInventory(inv);
     });
@@ -3097,7 +3099,7 @@ void CConnman::RelayInv(CInv &inv, const int minProtoVersion)
 
 void CConnman::RelayInvFiltered(CInv &inv, const CTransaction &relatedTx, const int minProtoVersion)
 {
-    g_connman->ForEachNode([&inv, &relatedTx, minProtoVersion](CNode* node) {
+    ForEachNode([&inv, &relatedTx, minProtoVersion](CNode* node) {
         if (node->nVersion < minProtoVersion) return;
         {
             LOCK(node->cs_filter);
@@ -3110,7 +3112,7 @@ void CConnman::RelayInvFiltered(CInv &inv, const CTransaction &relatedTx, const 
 
 void CConnman::RelayInvFiltered(CInv &inv, const uint256 &relatedTxHash, const int minProtoVersion)
 {
-    g_connman->ForEachNode([&inv, &relatedTxHash, minProtoVersion](CNode* node) {
+    ForEachNode([&inv, &relatedTxHash, minProtoVersion](CNode* node) {
         if (node->nVersion < minProtoVersion) return;
         {
             LOCK(node->cs_filter);

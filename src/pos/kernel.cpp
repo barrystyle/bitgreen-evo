@@ -396,11 +396,26 @@ bool CheckProofOfStake(const CBlock &block, CBlockIndex* pindexPrev, uint256& ha
     if (!g_txindex)
         return error("%s: transaction index not available", __func__);
 
-    // First try finding the previous transaction in database
-    uint256 hashBlock;
+    // Get transaction index for the previous transaction
+    CDiskTxPos postx;
+    if (!pblocktree->ReadTxIndex(txin.prevout.hash, postx))
+        return error("CheckProofOfStake() : tx index not found");  // tx index not found
+
+    // Read txPrev and header of its block
+    CBlockHeader header;
     CTransactionRef txPrev;
-    if (!GetTransaction(txin.prevout.hash, txPrev, Params().GetConsensus(), hashBlock))
-        return error("%s: read txPrev failed", __func__);
+    {
+        CAutoFile file(OpenBlockFile(postx, true), SER_DISK, CLIENT_VERSION);
+        try {
+            file >> header;
+            fseek(file.Get(), postx.nTxOffset, SEEK_CUR);
+            file >> txPrev;
+        } catch (std::exception &e) {
+            return error("%s() : deserialize or I/O error in CheckProofOfStake()", __PRETTY_FUNCTION__);
+        }
+        if (txPrev->GetHash() != txin.prevout.hash)
+            return error("%s() : txid mismatch in CheckProofOfStake()", __PRETTY_FUNCTION__);
+    }
 
     // Enforce minimum stake depth
     const int nPreviousBlockHeight = pindexPrev->nHeight;
@@ -414,8 +429,6 @@ bool CheckProofOfStake(const CBlock &block, CBlockIndex* pindexPrev, uint256& ha
         LogPrintf("\n%s : min age violation - height=%d - nHeightBlockFrom=%d (depth=%d)\n", __func__, nPreviousBlockHeight, nBlockFromHeight, nPreviousBlockHeight - nBlockFromHeight);
         return false;
     }
-
-    CBlockHeader header = LookupBlockIndex(hashBlock)->GetBlockHeader();
 
     // Verify signature
     {

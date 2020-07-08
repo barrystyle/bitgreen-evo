@@ -20,9 +20,12 @@
 
 #include <util/init.h>
 
+CMNNotificationInterface* g_mn_notification_interface = nullptr;
+
 void CMNNotificationInterface::InitializeCurrentBlockTip()
 {
     LOCK(cs_main);
+    SynchronousUpdatedBlockTip(ChainActive().Tip(), nullptr, ::ChainstateActive().IsInitialBlockDownload());
     UpdatedBlockTip(ChainActive().Tip(), nullptr, ::ChainstateActive().IsInitialBlockDownload());
 }
 
@@ -37,13 +40,18 @@ void CMNNotificationInterface::NotifyHeaderTip(const CBlockIndex *pindexNew, boo
     masternodeSync.NotifyHeaderTip(pindexNew, fInitialDownload, connman);
 }
 
-void CMNNotificationInterface::UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload)
+void CMNNotificationInterface::SynchronousUpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload)
 {
     if (pindexNew == pindexFork) // blocks were disconnected without any new ones
         return;
 
     deterministicMNManager->UpdatedBlockTip(pindexNew);
+}
 
+void CMNNotificationInterface::UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload)
+{
+    if (pindexNew == pindexFork) // blocks were disconnected without any new ones
+        return;
     masternodeSync.UpdatedBlockTip(pindexNew, fInitialDownload, connman);
 
     if (fInitialDownload)
@@ -52,7 +60,6 @@ void CMNNotificationInterface::UpdatedBlockTip(const CBlockIndex *pindexNew, con
     if (fLiteMode)
         return;
 
-    llmq::quorumInstantSendManager->UpdatedBlockTip(pindexNew);
     llmq::chainLocksHandler->UpdatedBlockTip(pindexNew);
 
     governance.UpdatedBlockTip(pindexNew, connman);
@@ -60,21 +67,22 @@ void CMNNotificationInterface::UpdatedBlockTip(const CBlockIndex *pindexNew, con
     llmq::quorumDKGSessionManager->UpdatedBlockTip(pindexNew, fInitialDownload);
 }
 
-void CMNNotificationInterface::SyncTransaction(const CTransaction &tx, const CBlockIndex *pindex, int posInBlock)
+void CMNNotificationInterface::BlockConnected(const std::shared_ptr<const CBlock>& pblock, const CBlockIndex* pindex)
 {
-    llmq::quorumInstantSendManager->SyncTransaction(tx, pindex, posInBlock);
-    llmq::chainLocksHandler->SyncTransaction(tx, pindex, posInBlock);
+}
+
+void CMNNotificationInterface::BlockDisconnected(const std::shared_ptr<const CBlock>& pblock, const CBlockIndex* pindexDisconnected)
+{
 }
 
 void CMNNotificationInterface::NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff)
 {
-    CMNAuth::NotifyMasternodeListChanged(undo, oldMNList, diff);
+    CMNAuth::NotifyMasternodeListChanged(undo, oldMNList, diff, connman);
     governance.UpdateCachesAndClean();
 }
 
 void CMNNotificationInterface::NotifyChainLock(const CBlockIndex* pindex)
 {
-    llmq::quorumInstantSendManager->NotifyChainLock(pindex);
 }
 
-CMNNotificationInterface* g_mn_notification_interface = nullptr;
+

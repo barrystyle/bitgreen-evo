@@ -350,6 +350,7 @@ public:
     }
 
     void UpdatedBlockTip(const CBlockIndex* pindex, CConnman& connman);
+
     int64_t GetLastDiffTime() const { return nTimeLastDiff; }
     void UpdateLastDiffTime(int64_t nTimeIn) { nTimeLastDiff = nTimeIn; }
 

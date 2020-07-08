@@ -1226,7 +1226,7 @@ void CGovernanceManager::RequestOrphanObjects(CConnman& connman)
     LogPrint(BCLog::GOBJECT, "CGovernanceObject::RequestOrphanObjects -- number objects = %d\n", vecHashesFiltered.size());
 
     for (const uint256& nHash : vecHashesFiltered) {
-        g_connman->ForEachNode([&, nHash](CNode* pnode) {
+        connman.ForEachNode([&, nHash](CNode* pnode) {
             if (pnode->fMasternode) {
                 return;
             }

@@ -1872,6 +1872,24 @@ static bool WriteUndoDataForBlock(const CBlockUndo& blockundo, BlockValidationSt
     return true;
 }
 
+static bool WriteTxIndexDataForBlock(const CBlock& block, BlockValidationState& state, CBlockIndex* pindex)
+{
+    CDiskTxPos pos(pindex->GetBlockPos(), GetSizeOfCompactSize(block.vtx.size()));
+    std::vector<std::pair<uint256, CDiskTxPos> > vPos;
+    vPos.reserve(block.vtx.size());
+    for (const CTransactionRef& tx : block.vtx)
+    {
+        vPos.push_back(std::make_pair(tx->GetHash(), pos));
+        pos.nTxOffset += ::GetSerializeSize(*tx, CLIENT_VERSION);
+    }
+
+    if (!pblocktree->WriteTxIndex(vPos)) {
+        return AbortNode(state, "Failed to write transaction index");
+    }
+
+    return true;
+}
+
 static CCheckQueue<CScriptCheck> scriptcheckqueue(128);
 
 void ThreadScriptCheck(int worker_num) {
@@ -2109,6 +2127,7 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
             return AbortNode(state, "Found specialDB inconsistency, you must reindex to continue");
         }
     }
+
     nBlocksTotal++;
 
     // Special case for the genesis block, skipping connection of its transactions
@@ -2171,8 +2190,7 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
     // Now that the whole chain is irreversibly beyond that time it is applied to all blocks except the
     // two in the chain that violate it. This prevents exploiting the issue against nodes during their
     // initial block download.
-    bool fEnforceBIP30 = !((pindex->nHeight==91842 && pindex->GetBlockHash() == uint256S("0x00000000000a4d0a398161ffc163c503763b1f4360639393e0e4c8e300e0caec")) ||
-                           (pindex->nHeight==91880 && pindex->GetBlockHash() == uint256S("0x00000000000743f190a18c5577a3c2d2a1f610ae9601ac046a38084ccb7cd721")));
+    bool fEnforceBIP30 = (!pindex->phashBlock); // Enforce on CreateNewBlock invocations which don't have a hash.
 
     // Once BIP34 activated it was not possible to create new duplicate coinbases and thus other than starting
     // with the 2 existing duplicate coinbase pairs, not possible to create overwriting txs.  But by the
@@ -2440,6 +2458,9 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
         pindex->RaiseValidity(BLOCK_VALID_SCRIPTS);
         setDirtyBlockIndex.insert(pindex);
     }
+
+    if (!WriteTxIndexDataForBlock(block, state, pindex))
+        return false;
 
     assert(pindex->phashBlock);
     // add this block to the view's block chain
@@ -3072,6 +3093,11 @@ static void LimitValidationInterfaceQueue() LOCKS_EXCLUDED(cs_main) {
     }
 }
 
+/**
+ * Make the best chain active, in multiple steps. The result is either failure
+ * or an activated best chain. pblock is either nullptr or a pointer to a block
+ * that is already loaded (to avoid loading it again from disk).
+ */
 bool CChainState::ActivateBestChain(BlockValidationState &state, const CChainParams& chainparams, std::shared_ptr<const CBlock> pblock) {
     // Note that while we're often called here from ProcessNewBlock, this is
     // far from a guarantee. Things in the P2P/RPC will often end up calling
@@ -3083,12 +3109,15 @@ bool CChainState::ActivateBestChain(BlockValidationState &state, const CChainPar
     // because this function periodically releases cs_main so that it does not lock up other threads for too long
     // during large connects - and to allow for e.g. the callback queue to drain
     // we use m_cs_chainstate to enforce mutual exclusion so that only one caller may execute this function at a time
-    LOCK(m_cs_chainstate);
+    static RecursiveMutex cs_activateBestChain;
+    LOCK(cs_activateBestChain);
 
     CBlockIndex *pindexMostWork = nullptr;
     CBlockIndex *pindexNewTip = nullptr;
     int nStopAtHeight = gArgs.GetArg("-stopatheight", DEFAULT_STOPATHEIGHT);
     do {
+        boost::this_thread::interruption_point();
+
         // Block until the validation queue drains. This should largely
         // never happen in normal operation, however may happen during
         // reindex, causing memory blowup if we run too far ahead.
@@ -3098,7 +3127,7 @@ bool CChainState::ActivateBestChain(BlockValidationState &state, const CChainPar
         LimitValidationInterfaceQueue();
 
         {
-            LOCK2(cs_main, ::mempool.cs); // Lock transaction pool for at least as long as it takes for connectTrace to be consumed
+            LOCK(cs_main);
             CBlockIndex* starting_tip = m_chain.Tip();
             bool blocks_connected = false;
             do {
@@ -3143,6 +3172,7 @@ bool CChainState::ActivateBestChain(BlockValidationState &state, const CChainPar
             // Enqueue while holding cs_main to ensure that UpdatedBlockTip is called in the order in which blocks are connected
             if (pindexFork != pindexNewTip) {
                 // Notify ValidationInterface subscribers
+                GetMainSignals().SynchronousUpdatedBlockTip(pindexNewTip, pindexFork, fInitialDownload);
                 GetMainSignals().UpdatedBlockTip(pindexNewTip, pindexFork, fInitialDownload);
 
                 // Always notify the UI if a new block tip was connected
@@ -4127,13 +4157,12 @@ bool ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<cons
         if (fNewBlock) *fNewBlock = false;
         BlockValidationState state;
 
-        // CheckBlock() does not support multi-threaded block validation because CBlock::fChecked can cause data race.
-        // Therefore, the following critical section must include the CheckBlock() call as well.
-        LOCK(cs_main);
-
         // Ensure that CheckBlock() passes before calling AcceptBlock, as
         // belt-and-suspenders.
         bool ret = CheckBlock(*pblock, state, chainparams.GetConsensus());
+
+        LOCK(cs_main);
+
         if (ret) {
             // Store to disk
             ret = ::ChainstateActive().AcceptBlock(pblock, state, chainparams, &pindex, fForceProcessing, nullptr, fNewBlock);
@@ -4954,6 +4983,8 @@ bool LoadBlockIndex(const CChainParams& chainparams)
         // needs_init.
 
         LogPrintf("Initializing databases...\n");
+
+        pblocktree->WriteFlag("txindex", true);
     }
     return true;
 }

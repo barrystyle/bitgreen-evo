@@ -16,6 +16,7 @@
 #include <merkleblock.h>
 #include <netmessagemaker.h>
 #include <netbase.h>
+#include <net.h>
 #include <policy/fees.h>
 #include <policy/policy.h>
 #include <primitives/block.h>
@@ -919,14 +920,6 @@ bool RequestDataAvailable(const NodeId id, size_t nNewDataSize)
 
 void RemoveDataRequest(const NodeId id, const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
 {
-    g_connman->ForEachNode([&id, &inv](CNode* pnode) {
-        if (id > -1 && pnode->GetId() != id) return;
-
-        CNodeState* nodestate = State(pnode->GetId());
-        CNodeState::InventoryDownloadState& peer_download_state = nodestate->m_inv_download;
-        peer_download_state.m_inv_announced.erase(inv);
-        peer_download_state.m_inv_in_flight.erase(inv);
-    });
     EraseDataRequest(inv);
 }
 
@@ -2605,11 +2598,7 @@ bool ProcessMessage(CNode* pfrom, const std::string& msg_type, CDataStream& vRec
                 }
             } else {
                 pfrom->AddInventoryKnown(inv);
-                if (fBlocksOnly) {
-                    LogPrint(BCLog::NET, "transaction (%s) inv sent in violation of protocol, disconnecting peer=%d\n", inv.hash.ToString(), pfrom->GetId());
-                    pfrom->fDisconnect = true;
-                    return true;
-                } else if (!fAlreadyHave && !fImporting && !fReindex && !::ChainstateActive().IsInitialBlockDownload()) {
+                if (!fAlreadyHave && !fImporting && !fReindex && !::ChainstateActive().IsInitialBlockDownload()) {
                     RequestTx(State(pfrom->GetId()), inv.hash, current_time);
                 }
             }
@@ -4439,6 +4428,57 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
             }
         }
 
+        //
+        // Message: getdata (BitGreen specific inventory)
+        //
+        if (state.m_inv_download.m_check_expiry_timer <= current_time) {
+            for (auto it=state.m_inv_download.m_inv_in_flight.begin(); it != state.m_inv_download.m_inv_in_flight.end();) {
+                if (it->second <= current_time - TX_EXPIRY_INTERVAL) {
+                    LogPrint(BCLog::NET, "timeout of inflight tx %s from peer=%d\n", it->first.ToString(), pto->GetId());
+                    state.m_inv_download.m_inv_announced.erase(it->first);
+                    state.m_inv_download.m_inv_in_flight.erase(it++);
+                } else {
+                    ++it;
+                }
+            }
+            // On average, we do this check every TX_EXPIRY_INTERVAL. Randomize
+            // so that we're not doing this for all peers at the same time.
+            state.m_inv_download.m_check_expiry_timer = current_time + TX_EXPIRY_INTERVAL/2 + GetRandMicros(TX_EXPIRY_INTERVAL);
+        }
+
+        auto& inv_process_time = state.m_inv_download.m_inv_process_time;
+        while (!inv_process_time.empty() && inv_process_time.begin()->first <= current_time && state.m_inv_download.m_inv_in_flight.size() < MAX_PEER_TX_IN_FLIGHT) {
+            const CInv inv = inv_process_time.begin()->second;
+            // Erase this entry from inv_process_time (it may be added back for
+            // processing at a later time, see below)
+            inv_process_time.erase(inv_process_time.begin());
+            if (!AlreadyHave(inv, mempool)) {
+                // If this transaction was last requested more than 1 minute ago,
+                // then request.
+                auto last_request_time = GetTxRequestTime(inv.hash);
+                if (last_request_time <= current_time - GETDATA_TX_INTERVAL) {
+                    LogPrint(BCLog::NET, "Requesting %s peer=%d\n", inv.ToString(), pto->GetId());
+                    vGetData.push_back(inv);
+                    if (vGetData.size() >= MAX_GETDATA_SZ) {
+                        connman->PushMessage(pto, msgMaker.Make(NetMsgType::GETDATA, vGetData));
+                        vGetData.clear();
+                    }
+                    UpdateTxRequestTime(inv.hash, current_time);
+                    state.m_inv_download.m_inv_in_flight.emplace(inv, current_time);
+                } else {
+                    // This transaction is in flight from someone else; queue
+                    // up processing to happen after the download times out
+                    // (with a slight delay for inbound peers, to prefer
+                    // requests to outbound peers).
+                    auto next_process_time = CalculateTxGetDataTime(inv.hash, current_time, !state.fPreferredDownload);
+                    inv_process_time.emplace(next_process_time, inv);
+                }
+            } else {
+                // We have already seen this transaction, no need to download.
+                state.m_inv_download.m_inv_announced.erase(inv);
+                state.m_inv_download.m_inv_in_flight.erase(inv);
+            }
+        }
 
         if (!vGetData.empty())
             connman->PushMessage(pto, msgMaker.Make(NetMsgType::GETDATA, vGetData));

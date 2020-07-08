@@ -277,3 +277,8 @@ void CMainSignals::NotifyGovernanceVote(const CGovernanceVote &vote) {
 void CMainSignals::NotifyGovernanceObject(const CGovernanceObject &object) {
      m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.NotifyGovernanceObject(object); });
 }
+
+void CMainSignals::SynchronousUpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload) {
+     m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.SynchronousUpdatedBlockTip(pindexNew, pindexFork, fInitialDownload); });
+}
+
